@@ -313,58 +313,85 @@ with row_left:
         load_weights.clear()
         st.rerun()
 
-# ---------------- RIGHT SIDE (COMBINED CHART) ----------------
+# ==========================================================
+# 7 DAY WATER & WEIGHT COMBINED CHART
+# ==========================================================
+
 with row_right:
     st.header("7 Day Water & Weight")
 
     water_df = load_water()
     weights_df = load_weights()
 
-    start_date = pd.to_datetime(selected_date) - timedelta(days=6)
+    if not water_df.empty or not weights_df.empty:
 
-    water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
-    weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
+        start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-    # Ensure date columns are same dtype
-    water_last7["date"] = pd.to_datetime(water_last7["date"])
-    weight_last7["date"] = pd.to_datetime(weight_last7["date"])
+        water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
+        weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
 
-    combined = pd.merge(
-        water_last7,
-        weight_last7,
-        on="date",
-        how="outer"
-    ).sort_values("date")
+        # Ensure both date columns are proper datetime
+        water_last7["date"] = pd.to_datetime(water_last7["date"])
+        weight_last7["date"] = pd.to_datetime(weight_last7["date"])
 
-    # Drop rows where both are missing
-    combined = combined.dropna(how="all", subset=["water","weight"])
+        combined = pd.merge(
+            water_last7,
+            weight_last7,
+            on="date",
+            how="outer"
+        ).sort_values("date")
 
-    if not combined.empty:
+        # Drop rows where both values are missing
+        combined = combined.dropna(how="all", subset=["water","weight"])
 
-        base = alt.Chart(combined).encode(
-            x=alt.X("date:T", title="Date")
-        )
+        if not combined.empty:
 
-        water_line = base.mark_line(color="blue").encode(
-            y=alt.Y("water:Q", title="Water (oz)")
-        )
+            # Remove time component (fixes the AM/PM issue)
+            combined["date"] = pd.to_datetime(combined["date"]).dt.date
 
-        weight_line = base.mark_line(color="red").encode(
-            y=alt.Y(
-                "weight:Q",
-                title="Weight",
-                scale=alt.Scale(domain=[300, 400]),  # START AT 300
-                axis=alt.Axis(titleColor="red")
+            base = alt.Chart(combined).encode(
+                x=alt.X(
+                    "date:T",
+                    title="Date",
+                    axis=alt.Axis(format="%b %d")
+                )
             )
-        )
 
-        chart = alt.layer(water_line, weight_line).resolve_scale(
-            y='independent'
-        )
+            # Thicker water line
+            water_line = base.mark_line(
+                color="blue",
+                strokeWidth=4
+            ).encode(
+                y=alt.Y(
+                    "water:Q",
+                    title="Water (oz)"
+                )
+            )
 
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.info("No data available for last 7 days.")
+            # Thicker weight line (starts at 300)
+            weight_line = base.mark_line(
+                color="red",
+                strokeWidth=4
+            ).encode(
+                y=alt.Y(
+                    "weight:Q",
+                    title="Weight",
+                    scale=alt.Scale(domain=[300, None]),
+                    axis=alt.Axis(titleColor="red")
+                )
+            )
+
+            chart = alt.layer(
+                water_line,
+                weight_line
+            ).resolve_scale(
+                y="independent"
+            )
+
+            st.altair_chart(chart, use_container_width=True)
+
+        else:
+            st.info("No data available for last 7 days.")
 
 # ==========================================================
 # NOTES (FULL ROW)
@@ -404,6 +431,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
