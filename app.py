@@ -25,8 +25,7 @@ DAILY_GOALS = {
     "calories": 2000,
     "protein": 130,
     "fat": 70,
-    "carbs": 130,
-    "sat_fat": 15  # NEW
+    "carbs": 130
 }
 
 # =============================
@@ -59,14 +58,7 @@ def search_food(food_name):
 
 def extract_macros(food):
     nutrients = food.get("foodNutrients", [])
-
-    macros = {
-        "calories": 0,
-        "protein": 0,
-        "fat": 0,
-        "carbs": 0,
-        "sat_fat": 0
-    }
+    macros = {"calories": 0, "protein": 0, "fat": 0, "carbs": 0}
 
     for n in nutrients:
         if n["nutrientId"] == 1008:
@@ -77,8 +69,6 @@ def extract_macros(food):
             macros["fat"] = n["value"]
         elif n["nutrientId"] == 1005:
             macros["carbs"] = n["value"]
-        elif n["nutrientId"] == 1258:  # Saturated fat
-            macros["sat_fat"] = n["value"]
 
     return macros
 
@@ -166,8 +156,7 @@ if entry_mode == "Search USDA":
                     "calories": macros["calories"] * servings,
                     "protein": macros["protein"] * servings,
                     "fat": macros["fat"] * servings,
-                    "carbs": macros["carbs"] * servings,
-                    "sat_fat": macros["sat_fat"] * servings
+                    "carbs": macros["carbs"] * servings
                 }
 
                 st.session_state.daily_log.append(entry)
@@ -195,7 +184,6 @@ if entry_mode == "Enter Macros Manually":
     with col1:
         manual_protein = st.number_input("Protein (g)", min_value=0.0)
         manual_fat = st.number_input("Fat (g)", min_value=0.0)
-        manual_sat_fat = st.number_input("Saturated Fat (g)", min_value=0.0)
 
     with col2:
         manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
@@ -216,8 +204,7 @@ if entry_mode == "Enter Macros Manually":
             "calories": calculated_calories,
             "protein": manual_protein,
             "fat": manual_fat,
-            "carbs": manual_carbs,
-            "sat_fat": manual_sat_fat
+            "carbs": manual_carbs
         }
 
         st.session_state.daily_log.append(entry)
@@ -236,15 +223,16 @@ if not df.empty:
     for i, row in df.iterrows():
 
         col1, col2 = st.columns([6, 1])
+
         high_carb = row["carbs"] > 30
 
         with col1:
             food_display = f"**{row['food']}**"
+
             macro_text = (
                 f"{round(row['calories'],1)} cal | "
                 f"P: {round(row['protein'],1)}g | "
                 f"F: {round(row['fat'],1)}g | "
-                f"Sat: {round(row['sat_fat'],1)}g | "
                 f"C: {round(row['carbs'],1)}g"
             )
 
@@ -264,10 +252,12 @@ if not df.empty:
                 st.rerun()
 
     df = pd.DataFrame(st.session_state.daily_log)
-    totals = df[["calories","protein","fat","carbs","sat_fat"]].sum()
+    totals = df[["calories", "protein", "fat", "carbs"]].sum()
 
     st.divider()
     st.header("Daily Dashboard")
+
+    col1, col2, col3, col4 = st.columns(4)
 
     def metric_with_color(label, value, goal):
         if value > goal:
@@ -278,18 +268,18 @@ if not df.empty:
         else:
             st.metric(label, round(value,1))
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    metric_with_color("Calories", totals["calories"], DAILY_GOALS["calories"])
+    metric_with_color("Protein (g)", totals["protein"], DAILY_GOALS["protein"])
+    metric_with_color("Fat (g)", totals["fat"], DAILY_GOALS["fat"])
+    metric_with_color("Carbs (g)", totals["carbs"], DAILY_GOALS["carbs"])
 
-    with col1:
-        metric_with_color("Calories", totals["calories"], DAILY_GOALS["calories"])
-    with col2:
-        metric_with_color("Protein (g)", totals["protein"], DAILY_GOALS["protein"])
-    with col3:
-        metric_with_color("Fat (g)", totals["fat"], DAILY_GOALS["fat"])
-    with col4:
-        metric_with_color("Carbs (g)", totals["carbs"], DAILY_GOALS["carbs"])
-    with col5:
-        metric_with_color("Sat Fat (g)", totals["sat_fat"], DAILY_GOALS["sat_fat"])
+    st.divider()
+    st.subheader("Progress Toward Goals")
+
+    for macro in DAILY_GOALS:
+        percent = totals[macro] / DAILY_GOALS[macro]
+        st.write(f"{macro.capitalize()} ({round(totals[macro],1)} / {DAILY_GOALS[macro]})")
+        st.progress(min(percent, 1.0))
 
 else:
     st.info("No food logged yet today.")
