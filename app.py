@@ -251,7 +251,7 @@ with water_left:
 # ---------- 7 DAY WATER GRAPH ----------
 with water_right:
 
-    st.header("Last 7 Days")
+    st.header("Water Tracker")
 
     if not water_df.empty:
         last_7 = water_df[water_df["date"] >= pd.to_datetime(today_str) - timedelta(days=6)]
@@ -289,3 +289,4 @@ if st.button("End Day"):
     rewrite_daily_sheet([])
     st.success("Day cleared.")
     st.rerun()
+
