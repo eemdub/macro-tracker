@@ -31,16 +31,6 @@ DAILY_GOALS = {
 today_str = str(date.today())
 
 # =============================
-# SESSION STATE
-# =============================
-
-if "daily_log" not in st.session_state:
-    st.session_state.daily_log = load_today_meals()
-
-if "current_meal" not in st.session_state:
-    st.session_state.current_meal = []
-
-# =============================
 # HELPERS
 # =============================
 
@@ -85,6 +75,16 @@ def load_today_meals():
 
     except:
         return []
+
+# =============================
+# SESSION STATE
+# =============================
+
+if "daily_log" not in st.session_state:
+    st.session_state.daily_log = load_today_meals()
+
+if "current_meal" not in st.session_state:
+    st.session_state.current_meal = []
 
 # =============================
 # SAVED FOODS
@@ -388,5 +388,6 @@ if not weights_df.empty:
     weights_df = weights_df.sort_values("date")
     st.subheader("Weight Trend")
     st.line_chart(weights_df.set_index("date")["weight"])
+
 
 
