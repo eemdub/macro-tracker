@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from datetime import date
 
-API_KEY = "kdqLV5XDvN6Z3nEYLKlJXHdskFj7GP2aFY7WlgVk"
+API_KEY = st.secrets["API_KEY"]
 
 if "daily_log" not in st.session_state:
     st.session_state.daily_log = []
@@ -75,4 +75,5 @@ if st.button("End Day"):
     if not df.empty:
         df.to_csv("macro_history.csv", mode="a", index=False, header=not pd.io.common.file_exists("macro_history.csv"))
         st.session_state.daily_log = []
+
         st.success("Day saved and reset.")
