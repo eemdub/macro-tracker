@@ -172,11 +172,12 @@ with left_col:
                 entry = {
                     "date": today_str,
                     "food": food["description"],
-                    "calories": macros["calories"]*multiplier,
-                    "protein": macros["protein"]*multiplier,
-                    "fat": macros["fat"]*multiplier,
-                    "carbs": macros["carbs"]*multiplier,
-                    "sat_fat": macros["sat_fat"]*multiplier
+                    "servings": servings,
+                    "calories": macros["calories"] * multiplier,
+                    "protein": macros["protein"] * multiplier,
+                    "fat": macros["fat"] * multiplier,
+                    "carbs": macros["carbs"] * multiplier,
+                    "sat_fat": macros["sat_fat"] * multiplier
                 }
                 st.session_state.current_meal.append(entry)
                 st.success("Added.")
@@ -205,28 +206,48 @@ with left_col:
 
             st.write(f"Calories: {round(manual_calories,1)}")
 
-        else:
-            manual_name = st.text_input("Food name")
-
-            r1c1,r1c2 = st.columns(2)
-            with r1c1:
-                manual_protein = st.number_input("Protein (g)", min_value=0.0)
-            with r1c2:
-                manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
-
-            r2c1,r2c2 = st.columns(2)
-            with r2c1:
-                manual_fat = st.number_input("Fat (g)", min_value=0.0)
-            with r2c2:
-                manual_sat = st.number_input("Sat Fat (g)", min_value=0.0)
-
-            manual_calories = manual_protein*4 + manual_carbs*4 + manual_fat*9
-            st.write(f"Calories: {round(manual_calories,1)}")
+       else:
+        manual_name = st.text_input("Food name")
+    
+        st.markdown("### Macros Per 1 Serving")
+    
+        r1c1, r1c2 = st.columns(2)
+        with r1c1:
+            per_serving_protein = st.number_input("Protein (g)", min_value=0.0)
+        with r1c2:
+            per_serving_carbs = st.number_input("Carbs (g)", min_value=0.0)
+    
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
+            per_serving_fat = st.number_input("Fat (g)", min_value=0.0)
+        with r2c2:
+            per_serving_sat = st.number_input("Sat Fat (g)", min_value=0.0)
+    
+        servings = st.number_input(
+            "Servings eaten",
+            min_value=1.0,
+            step=0.5
+        )
+    
+        # Multiply by servings
+        manual_protein = per_serving_protein * servings
+        manual_carbs = per_serving_carbs * servings
+        manual_fat = per_serving_fat * servings
+        manual_sat = per_serving_sat * servings
+    
+        manual_calories = (
+            per_serving_protein * 4 +
+            per_serving_carbs * 4 +
+            per_serving_fat * 9
+        ) * servings
+    
+        st.write(f"Total Calories: {round(manual_calories,1)}")
 
         if st.button("Add to Current Meal"):
             entry = {
                 "date": today_str,
                 "food": manual_name,
+                "servings": multiplier if selected != "Enter New Food" else servings,
                 "calories": manual_calories,
                 "protein": manual_protein,
                 "fat": manual_fat,
@@ -247,11 +268,24 @@ with left_col:
         st.dataframe(pd.DataFrame(st.session_state.current_meal))
 
         if st.button("Save Meal"):
-            rows = [list(item.values()) for item in st.session_state.current_meal]
-            append_meal(rows)
-            st.session_state.daily_log.extend(st.session_state.current_meal)
-            st.session_state.current_meal = []
-            st.success("Meal saved.")
+            rows = []
+
+            for item in st.session_state.current_meal:
+                rows.append([
+                    item["date"],
+                    item["food"],
+                    item.get("servings", 1),  # ensure servings column exists
+                    item["calories"],
+                    item["protein"],
+                    item["fat"],
+                    item["sat_fat"],
+                    item["carbs"]
+                ])
+
+                append_meal(rows)
+                            st.session_state.daily_log.extend(st.session_state.current_meal)
+                            st.session_state.current_meal = []
+                            st.success("Meal saved.")
 
 # =============================
 # RIGHT — DASHBOARD
@@ -358,6 +392,7 @@ if not weights_df.empty:
     st.line_chart(weights_df.set_index("date")["weight"])
 
 st.divider()
+
 
 
 
