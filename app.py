@@ -205,15 +205,24 @@ if not df.empty:
     df = pd.DataFrame(st.session_state.daily_log)
     totals = df[["calories", "protein", "fat", "carbs"]].sum()
 
-    st.divider()
-    st.header("Daily Dashboard")
+   st.divider()
+st.header("Daily Dashboard")
 
-    col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Calories", round(totals["calories"], 1))
-    col2.metric("Protein (g)", round(totals["protein"], 1))
-    col3.metric("Fat (g)", round(totals["fat"], 1))
-    col4.metric("Carbs (g)", round(totals["carbs"], 1))
+def metric_with_color(label, value, goal):
+    if value > goal:
+        st.markdown(
+            f"<div style='color:red;font-weight:bold'>{label}<br>{round(value,1)}</div>",
+            unsafe_allow_html=True
+        )
+    else:
+        st.metric(label, round(value,1))
+
+metric_with_color("Calories", totals["calories"], DAILY_GOALS["calories"])
+metric_with_color("Protein (g)", totals["protein"], DAILY_GOALS["protein"])
+metric_with_color("Fat (g)", totals["fat"], DAILY_GOALS["fat"])
+metric_with_color("Carbs (g)", totals["carbs"], DAILY_GOALS["carbs"])
 
     st.divider()
     st.subheader("Progress Toward Goals")
@@ -240,6 +249,7 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
 
 
