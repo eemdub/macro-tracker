@@ -353,7 +353,7 @@ with row_right:
             y=alt.Y(
                 "weight:Q",
                 title="Weight",
-                scale=alt.Scale(domain=[300, None]),  # START AT 300
+                scale=alt.Scale(domain=[300, 400]),  # START AT 300
                 axis=alt.Axis(titleColor="red")
             )
         )
@@ -404,6 +404,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
