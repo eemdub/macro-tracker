@@ -355,8 +355,7 @@ with row_right:
                 title="Weight",
                 scale=alt.Scale(domain=[300, None]),  # START AT 300
                 axis=alt.Axis(titleColor="red")
-    )
-)
+            )
         )
 
         chart = alt.layer(water_line, weight_line).resolve_scale(
@@ -405,6 +404,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
