@@ -117,31 +117,6 @@ def save_weight(weight):
 
 st.title("Daily Macro Tracker")
 
-# =============================
-# DAILY WEIGHT
-# =============================
-
-st.header("Daily Weight")
-
-weights_df = load_weights()
-today_str = str(date.today())
-
-if not weights_df.empty and today_str in weights_df["date"].astype(str).values:
-    today_weight = weights_df[weights_df["date"]==today_str]["weight"].iloc[0]
-    st.success(f"Today's weight logged: {today_weight}")
-else:
-    weight_input = st.number_input("Enter today's weight", min_value=0.0, step=0.1)
-    if st.button("Save Weight"):
-        save_weight(weight_input)
-        st.success("Weight saved.")
-        st.rerun()
-
-if not weights_df.empty:
-    weights_df["date"] = pd.to_datetime(weights_df["date"])
-    weights_df = weights_df.sort_values("date")
-    st.line_chart(weights_df.set_index("date")["weight"])
-
-st.divider()
 
 # =============================
 # LAYOUT
@@ -357,4 +332,32 @@ if st.button("End Day"):
     st.session_state.daily_log=[]
     st.session_state.current_meal=[]
     st.success("Day cleared.")
+
+# =============================
+# DAILY WEIGHT
+# =============================
+
+st.header("Daily Weight")
+
+weights_df = load_weights()
+today_str = str(date.today())
+
+if not weights_df.empty and today_str in weights_df["date"].astype(str).values:
+    today_weight = weights_df[weights_df["date"]==today_str]["weight"].iloc[0]
+    st.success(f"Today's weight logged: {today_weight}")
+else:
+    weight_input = st.number_input("Enter today's weight", min_value=0.0, step=0.1)
+    if st.button("Save Weight"):
+        save_weight(weight_input)
+        st.success("Weight saved.")
+        st.rerun()
+
+if not weights_df.empty:
+    weights_df["date"] = pd.to_datetime(weights_df["date"])
+    weights_df = weights_df.sort_values("date")
+    st.line_chart(weights_df.set_index("date")["weight"])
+
+st.divider()
+
+
 
