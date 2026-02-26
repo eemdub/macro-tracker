@@ -267,70 +267,109 @@ with right:
 # WATER + WEIGHT ROW
 # ==========================================================
 
+import altair as alt
+
 row_left, row_right = st.columns([1,2])
 
 with row_left:
     st.header("Water & Weight")
 
+    # ---------- WATER ----------
     water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
+
     if st.button("Add Water"):
-        water_ws.append_row([selected_date_str, water_amount])
-        load_water.clear()
+        water_ws.append_row([str(selected_date), water_amount])
+        st.cache_data.clear()
         st.rerun()
 
     st.divider()
 
+    # ---------- WEIGHT ----------
     weight_input = st.number_input("Enter weight", 0.0, step=0.1)
+
     if st.button("Save Weight"):
-        weight_ws.append_row([selected_date_str, weight_input])
-        load_weights.clear()
+        weight_ws.append_row([str(selected_date), weight_input])
+        st.cache_data.clear()
         st.rerun()
 
 with row_right:
     st.header("7 Day Water & Weight")
 
+    # Reload fresh each time
+    water_df = pd.DataFrame(water_ws.get_all_records())
+    weight_df = pd.DataFrame(weight_ws.get_all_records())
+
+    if not water_df.empty:
+        water_df["date"] = pd.to_datetime(water_df["date"])
+        water_df["water"] = pd.to_numeric(water_df["water"], errors="coerce")
+
+    if not weight_df.empty:
+        weight_df["date"] = pd.to_datetime(weight_df["date"])
+        weight_df["weight"] = pd.to_numeric(weight_df["weight"], errors="coerce")
+
     start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-    water_last7 = water_df[water_df["date"] >= start_date]
-    weight_last7 = weights_df[weights_df["date"] >= start_date]
+    water_last7 = water_df[water_df["date"] >= start_date] if not water_df.empty else pd.DataFrame()
+    weight_last7 = weight_df[weight_df["date"] >= start_date] if not weight_df.empty else pd.DataFrame()
 
     if not water_last7.empty or not weight_last7.empty:
 
-        water_last7["date"] = pd.to_datetime(water_last7["date"]).dt.date
-        weight_last7["date"] = pd.to_datetime(weight_last7["date"]).dt.date
+        water_last7["date"] = water_last7["date"].dt.date
+        weight_last7["date"] = weight_last7["date"].dt.date
 
-        water_chart = alt.Chart(water_last7).mark_line(
-            color="#1f77b4", strokeWidth=3
+        # WATER LINE
+        water_line = alt.Chart(water_last7).mark_line(
+            color="#1f77b4",
+            strokeWidth=3
         ).encode(
             x=alt.X("date:T", axis=alt.Axis(format="%b %d")),
-            y="water:Q"
+            y=alt.Y("water:Q", title="Water (oz)")
         )
 
         water_points = alt.Chart(water_last7).mark_point(
-            shape="triangle-up", size=250, color="#1f77b4"
-        ).encode(
-            x="date:T", y="water:Q"
-        )
-
-        weight_chart = alt.Chart(weight_last7).mark_line(
-            color="#d62728", strokeWidth=3
+            shape="triangle-up",
+            size=250,
+            color="#1f77b4"
         ).encode(
             x="date:T",
-            y=alt.Y("weight:Q", scale=alt.Scale(domain=[300,400]))
+            y="water:Q"
+        )
+
+        # WEIGHT LINE
+        weight_line = alt.Chart(weight_last7).mark_line(
+            color="#d62728",
+            strokeWidth=3
+        ).encode(
+            x="date:T",
+            y=alt.Y(
+                "weight:Q",
+                title="Weight",
+                scale=alt.Scale(domain=[300, 400])
+            )
         )
 
         weight_points = alt.Chart(weight_last7).mark_point(
-            shape="triangle-up", size=250, color="#d62728"
+            shape="triangle-up",
+            size=250,
+            color="#d62728"
         ).encode(
-            x="date:T", y="weight:Q"
+            x="date:T",
+            y="weight:Q"
         )
 
-        st.altair_chart(
-            alt.layer(water_chart, water_points, weight_chart, weight_points)
-            .resolve_scale(y="independent"),
-            use_container_width=True
+        chart = alt.layer(
+            water_line,
+            water_points,
+            weight_line,
+            weight_points
+        ).resolve_scale(
+            y="independent"
         )
 
+        st.altair_chart(chart, use_container_width=True)
+
+    else:
+        st.info("No data available for last 7 days.")
 # ==========================================================
 # NOTES (FULL ROW)
 # ==========================================================
@@ -359,3 +398,4 @@ with colA:
 with colB:
     if st.button("End Day"):
         st.success("Day Complete")
+
