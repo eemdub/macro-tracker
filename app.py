@@ -101,15 +101,17 @@ entry_mode = st.radio(
 
 if entry_mode == "Search USDA":
 
-    col1, col2 = st.columns([5, 1])
+    with st.form("search_form", clear_on_submit=False):
 
-    with col1:
-        food_query = st.text_input("Enter food name")
+        col1, col2 = st.columns([6, 1], vertical_alignment="bottom")
 
-    with col2:
-        search_clicked = st.button("Search")
+        with col1:
+            food_query = st.text_input("Enter food name")
 
-    if search_clicked:
+        with col2:
+            submitted = st.form_submit_button("Search")
+
+    if submitted:
         results = search_food(food_query)
         if results:
             st.session_state.search_results = results
@@ -222,5 +224,6 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
 
