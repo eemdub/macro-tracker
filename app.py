@@ -274,13 +274,18 @@ with right:
         st.bar_chart(chart_df)
 
 # ==========================================================
-# WATER + 7 DAY WATER
+# WATER + WEIGHT (COMBINED CHART ROW)
 # ==========================================================
 
-water_left, water_right = st.columns([1,1])
+import altair as alt
 
-with water_left:
-    st.header("Water Intake")
+row_left, row_right = st.columns([1,2])
+
+# ---------------- LEFT SIDE (STACKED INPUTS) ----------------
+with row_left:
+    st.header("Water & Weight")
+
+    # -------- WATER INPUT --------
     water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
 
     if st.button("Add Water"):
@@ -293,41 +298,9 @@ with water_left:
         load_water.clear()
         st.rerun()
 
-with water_right:
-    st.header("7 Day Water")
-    if not water_df.empty:
-        last7 = water_df[water_df["date"] >= pd.to_datetime(selected_date)-timedelta(days=6)]
-        st.line_chart(last7.set_index("date")["water"])
+    st.divider()
 
-# ==========================================================
-# NOTES + WEIGHT
-# ==========================================================
-
-notes_left, weight_right = st.columns([1,1])
-
-with notes_left:
-    st.header("Daily Notes")
-    notes_df = load_notes()
-
-    existing_note = ""
-    if not notes_df.empty:
-        row = notes_df[notes_df["date"]==selected_date_str]
-        if not row.empty:
-            existing_note = row["notes"].iloc[0]
-
-    note_text = st.text_area("Notes", value=existing_note, height=150)
-
-    if st.button("Save Note"):
-        if notes_df.empty or selected_date_str not in notes_df["date"].values:
-            notes_ws.append_row([selected_date_str, note_text])
-        else:
-            row_index = notes_df.index[notes_df["date"]==selected_date_str][0] + 2
-            notes_ws.update_cell(row_index,2,note_text)
-        load_notes.clear()
-        st.success("Note saved.")
-
-with weight_right:
-    st.header("7 Day Weight")
+    # -------- WEIGHT INPUT --------
     weight_input = st.number_input("Enter weight", 0.0, step=0.1)
 
     if st.button("Save Weight"):
@@ -340,16 +313,84 @@ with weight_right:
         load_weights.clear()
         st.rerun()
 
+# ---------------- RIGHT SIDE (COMBINED CHART) ----------------
+with row_right:
+    st.header("7 Day Water & Weight")
+
+    water_df = load_water()
     weights_df = load_weights()
-    if not weights_df.empty:
-        weights_df = weights_df.sort_values("date")
-        weights_df["rolling_avg"] = weights_df["weight"].rolling(7).mean()
-        st.line_chart(weights_df.set_index("date")["rolling_avg"])
+
+    if not water_df.empty or not weights_df.empty:
+
+        # Filter last 7 days
+        start_date = pd.to_datetime(selected_date) - timedelta(days=6)
+
+        water_last7 = water_df[water_df["date"] >= start_date]
+        weight_last7 = weights_df[weights_df["date"] >= start_date]
+
+        # Merge datasets
+        combined = pd.merge(
+            water_last7,
+            weight_last7,
+            on="date",
+            how="outer"
+        ).sort_values("date")
+
+        # Dual axis chart
+        base = alt.Chart(combined).encode(
+            x=alt.X("date:T", title="Date")
+        )
+
+        water_line = base.mark_line(color="blue").encode(
+            y=alt.Y("water:Q", title="Water (oz)")
+        )
+
+        weight_line = base.mark_line(color="red").encode(
+            y=alt.Y("weight:Q", title="Weight", axis=alt.Axis(titleColor="red"))
+        )
+
+        chart = alt.layer(water_line, weight_line).resolve_scale(
+            y='independent'
+        )
+
+        st.altair_chart(chart, use_container_width=True)
 
 # ==========================================================
-# END DAY
+# NOTES (FULL ROW)
 # ==========================================================
 
 st.divider()
-if st.button("End Day"):
-    st.success("Day complete.")
+st.header("Daily Notes")
+
+notes_df = load_notes()
+
+existing_note = ""
+if not notes_df.empty:
+    row = notes_df[notes_df["date"]==selected_date_str]
+    if not row.empty:
+        existing_note = row["notes"].iloc[0]
+
+note_text = st.text_area("Notes", value=existing_note, height=180)
+
+# ==========================================================
+# SAVE NOTE + END DAY ROW
+# ==========================================================
+
+button_left, button_right = st.columns([1,1])
+
+with button_left:
+    if st.button("Save Note"):
+        if notes_df.empty or selected_date_str not in notes_df["date"].values:
+            notes_ws.append_row([selected_date_str, note_text])
+        else:
+            row_index = notes_df.index[
+                notes_df["date"]==selected_date_str
+            ][0] + 2
+            notes_ws.update_cell(row_index,2,note_text)
+        load_notes.clear()
+        st.success("Note saved.")
+
+with button_right:
+    if st.button("End Day"):
+        st.success("Day complete.")
+
