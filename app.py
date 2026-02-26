@@ -18,7 +18,8 @@ creds = Credentials.from_service_account_info(
 
 gc = gspread.authorize(creds)
 sheet = gc.open_by_key(st.secrets["gcp_service_account"]["sheet_id"])
-daily_ws = sheet.sheet1
+
+daily_ws = sheet.worksheet("Daily Foods")
 
 DAILY_GOALS = {
     "calories": 2000,
@@ -33,6 +34,24 @@ today_str = str(date.today())
 # =============================
 # HELPERS
 # =============================
+
+def load_today_meals():
+    try:
+        data = daily_ws.get_all_records()
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return []
+
+        df["date"] = df["date"].astype(str)
+        today_df = df[df["date"] == today_str]
+
+        return today_df.to_dict("records")
+    except:
+        return []
+
+def append_meal(rows):
+    daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
 
 def search_food(food_name):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -56,39 +75,7 @@ def extract_macros(food):
             macros["sat_fat"] = n["value"]
     return macros
 
-def append_meal(rows):
-    daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
-
-def load_today_meals():
-    try:
-        data = daily_ws.get_all_records()
-        df = pd.DataFrame(data)
-
-        if df.empty:
-            return []
-
-        df["date"] = df["date"].astype(str)
-
-        today_df = df[df["date"] == today_str]
-
-        return today_df.to_dict("records")
-
-    except:
-        return []
-
-# =============================
-# SESSION STATE
-# =============================
-
-if "daily_log" not in st.session_state:
-    st.session_state.daily_log = load_today_meals()
-
-if "current_meal" not in st.session_state:
-    st.session_state.current_meal = []
-
-# =============================
-# SAVED FOODS
-# =============================
+# ---------- SAVED FOODS ----------
 
 def load_saved_foods():
     try:
@@ -111,9 +98,7 @@ def save_food_to_library(entry):
         entry["carbs"] / entry["servings"]
     ])
 
-# =============================
-# WEIGHTS
-# =============================
+# ---------- WEIGHTS ----------
 
 def load_weights():
     try:
@@ -125,6 +110,16 @@ def load_weights():
 def save_weight(weight):
     ws = sheet.worksheet("Weights")
     ws.append_row([today_str, weight])
+
+# =============================
+# SESSION STATE
+# =============================
+
+if "daily_log" not in st.session_state:
+    st.session_state.daily_log = load_today_meals()
+
+if "current_meal" not in st.session_state:
+    st.session_state.current_meal = []
 
 # =============================
 # UI
@@ -328,7 +323,7 @@ with right_col:
 st.divider()
 
 # =============================
-# TODAY'S LOG + DELETE
+# TODAY'S LOG
 # =============================
 
 st.header("Today's Log")
@@ -336,11 +331,8 @@ st.header("Today's Log")
 df = pd.DataFrame(st.session_state.daily_log)
 
 if not df.empty:
-
     for i, row in df.iterrows():
-
         col1, col2 = st.columns([6,1])
-
         with col1:
             st.markdown(
                 f"**{row['food']}** | "
@@ -350,12 +342,10 @@ if not df.empty:
                 f"Sat:{round(row['sat_fat'],1)}g | "
                 f"C:{round(row['carbs'],1)}g"
             )
-
         with col2:
             if st.button("Delete", key=f"del_{i}"):
                 st.session_state.daily_log.pop(i)
                 st.rerun()
-
 else:
     st.info("No entries yet.")
 
@@ -388,6 +378,3 @@ if not weights_df.empty:
     weights_df = weights_df.sort_values("date")
     st.subheader("Weight Trend")
     st.line_chart(weights_df.set_index("date")["weight"])
-
-
-
