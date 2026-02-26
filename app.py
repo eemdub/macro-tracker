@@ -133,6 +133,7 @@ if entry_mode == "Search USDA":
         st.subheader("Serving Information")
 
         if serving_size:
+
             if household:
                 st.write(f"1 USDA serving = {household} ({serving_size} {serving_unit})")
             else:
@@ -144,35 +145,26 @@ if entry_mode == "Search USDA":
                 step=0.5
             )
 
-            multiplier = servings
+            if st.button("Add to Daily Log"):
+
+                entry = {
+                    "date": str(date.today()),
+                    "food": food["description"],
+                    "calories": macros["calories"] * servings,
+                    "protein": macros["protein"] * servings,
+                    "fat": macros["fat"] * servings,
+                    "carbs": macros["carbs"] * servings
+                }
+
+                st.session_state.daily_log.append(entry)
+                st.success("Food added.")
+                st.session_state.current_food = None
 
         else:
-            st.write("No USDA serving size available.")
-            st.write("Nutrition values are per 100 grams.")
-
-            grams = st.number_input(
-                "How many grams did you eat?",
-                min_value=0.0,
-                step=10.0
+            st.warning(
+                "This item does not have a USDA serving size available. "
+                "Please use manual macro entry for this item."
             )
-
-            multiplier = grams / 100
-
-        if st.button("Add to Daily Log"):
-
-            entry = {
-                "date": str(date.today()),
-                "food": food["description"],
-                "calories": macros["calories"] * multiplier,
-                "protein": macros["protein"] * multiplier,
-                "fat": macros["fat"] * multiplier,
-                "carbs": macros["carbs"] * multiplier
-            }
-
-            st.session_state.daily_log.append(entry)
-            st.success("Food added.")
-            st.session_state.current_food = None
-
 # =============================
 # MANUAL MODE
 # =============================
@@ -280,3 +272,4 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
