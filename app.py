@@ -158,22 +158,22 @@ with left_col:
                     step=0.5
                 )
 
-                multiplier = servings
-
-    # 🔥 FIX: USDA nutrients are often per 100g
-    if serving_unit and serving_unit.lower() == "g":
-        multiplier = (serving_size / 100) * servings
-    else:
-        multiplier = servings
+                # 🔥 CORRECT USDA SCALING (per 100g → per serving)
+                if serving_unit and serving_unit.lower() == "g":
+                    multiplier = (serving_size / 100) * servings
+                else:
+                    multiplier = servings
 
             else:
                 st.warning("No USDA serving size available.")
                 st.write("Nutrition values are based on 100g.")
+
                 servings = st.number_input(
                     "Estimated number of 100g servings:",
                     min_value=0.0,
                     step=0.5
                 )
+
                 multiplier = servings
 
             if st.button("Add to Daily Log"):
@@ -202,14 +202,12 @@ with left_col:
 
         manual_name = st.text_input("Food name")
 
-        # Row 1
         r1c1, r1c2 = st.columns(2)
         with r1c1:
             manual_protein = st.number_input("Protein (g)", min_value=0.0)
         with r1c2:
             manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
 
-        # Row 2
         r2c1, r2c2 = st.columns(2)
         with r2c1:
             manual_fat = st.number_input("Fat (g)", min_value=0.0)
@@ -346,4 +344,3 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
-
