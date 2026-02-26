@@ -2,13 +2,15 @@ import streamlit as st
 import pandas as pd
 import requests
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================================
 # CONFIG
 # ==========================================================
+
+st.set_page_config(layout="wide")
 
 USDA_API_KEY = st.secrets["USDA_API_KEY"]
 
@@ -35,8 +37,6 @@ DAILY_GOALS = {
 }
 
 WATER_GOAL = 75
-
-st.set_page_config(layout="wide")
 
 # ==========================================================
 # LOADERS
@@ -67,7 +67,6 @@ def load_weights():
     df = pd.DataFrame(weight_ws.get_all_records())
     if df.empty:
         return df
-    df = df[["date","weight"]]
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["weight"] = pd.to_numeric(df["weight"], errors="coerce")
     return df.dropna()
@@ -81,13 +80,13 @@ def load_notes():
     return df
 
 # ==========================================================
-# STREAKS
+# STREAK FUNCTIONS
 # ==========================================================
 
-def calculate_streak(dates):
-    if not dates:
+def calculate_food_streak(food_dates):
+    if not food_dates:
         return 0
-    dates = sorted(set(dates))
+    dates = sorted(set(food_dates))
     streak = 0
     today = date.today()
     for i in range(len(dates)-1, -1, -1):
@@ -100,14 +99,20 @@ def calculate_streak(dates):
 def calculate_water_streak(df):
     if df.empty:
         return 0
-    df = df.sort_values("date")
+    df = df.copy()
+    df["date_only"] = df["date"].dt.date
+    daily_totals = df.groupby("date_only")["water"].sum()
+
     streak = 0
     today = date.today()
-    for i in range(len(df)-1, -1, -1):
-        if df.iloc[i]["water"] >= WATER_GOAL and df.iloc[i]["date"].date() == today - timedelta(days=streak):
+
+    while True:
+        check_date = today - timedelta(days=streak)
+        if daily_totals.get(check_date, 0) >= WATER_GOAL:
             streak += 1
         else:
             break
+
     return streak
 
 # ==========================================================
@@ -120,22 +125,31 @@ with top1:
     selected_date = st.date_input("Select Date", date.today())
     selected_date_str = str(selected_date)
 
+foods_df = load_foods()
+water_df = load_water()
+weights_df = load_weights()
+
 with top2:
     if st.button("Weekly Review"):
         st.info("Weekly analytics coming soon.")
 
 with top3:
-    foods_df = load_foods()
-    water_df = load_water()
-    weights_df = load_weights()
-
     st.markdown("### 🔥 Streaks")
-    st.markdown(f"Food: {calculate_streak(foods_df['date'].tolist() if not foods_df.empty else [])}")
-    st.markdown(f"Water: {calculate_water_streak(water_df)}")
-    st.markdown(f"Weight: {calculate_streak(weights_df['date'].dt.strftime('%Y-%m-%d').tolist() if not weights_df.empty else [])}")
+    food_streak = calculate_food_streak(
+        foods_df["date"].tolist() if not foods_df.empty else []
+    )
+    water_streak = calculate_water_streak(water_df)
+    weight_streak = calculate_food_streak(
+        weights_df["date"].dt.strftime("%Y-%m-%d").tolist()
+        if not weights_df.empty else []
+    )
+
+    st.markdown(f"Food: {food_streak}")
+    st.markdown(f"Water: {water_streak}")
+    st.markdown(f"Weight: {weight_streak}")
 
 # ==========================================================
-# FOOD + MACROS ROW
+# FOOD + MACROS
 # ==========================================================
 
 left, right = st.columns([1,1])
@@ -149,11 +163,14 @@ with left:
     if entry_mode == "Search USDA":
         query = st.text_input("Search food")
         if st.button("Search"):
-            res = requests.get(
+            response = requests.get(
                 "https://api.nal.usda.gov/fdc/v1/foods/search",
                 params={"query": query, "api_key": USDA_API_KEY, "pageSize":5}
-            ).json().get("foods", [])
-            st.session_state.search_results = res
+            )
+            if response.status_code == 200:
+                st.session_state.search_results = response.json().get("foods", [])
+            else:
+                st.error("USDA API error.")
 
         if "search_results" in st.session_state:
             options = {f["description"]: f for f in st.session_state.search_results}
@@ -163,6 +180,7 @@ with left:
 
             if st.button("Add Food"):
                 nutrients = food.get("foodNutrients", [])
+
                 def get_val(id):
                     return next((n["value"] for n in nutrients if n["nutrientId"]==id),0)
 
@@ -214,88 +232,116 @@ with right:
     if not day_df.empty:
         totals = day_df.sum(numeric_only=True)
 
-        labels = []
-        values = []
-
-        for k in DAILY_GOALS:
-            remaining = DAILY_GOALS[k] - totals.get(k,0)
-            labels.append(f"{k}\n{round(remaining,1)} left")
-            values.append(min(totals.get(k,0)/DAILY_GOALS[k],1.5))
-
-        chart_df = pd.DataFrame({"Percent":values}, index=labels)
-        st.bar_chart(chart_df)
+        for k, goal in DAILY_GOALS.items():
+            value = totals.get(k,0)
+            percent = min(value/goal,1.0)
+            st.write(f"**{k.capitalize()}**: {round(value,1)} / {goal}")
+            st.progress(percent)
 
 # ==========================================================
-# WATER ROW
+# WATER & WEIGHT (2x2)
 # ==========================================================
 
-water_left, water_right = st.columns([1,1])
+st.divider()
+st.header("Water & Weight")
 
-with water_left:
-    st.header("Water Intake")
+input_col1, input_col2 = st.columns(2)
 
+with input_col1:
+    st.subheader("Water Intake")
     water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
 
     if st.button("Add Water"):
-        existing = water_df[water_df["date"]==pd.to_datetime(selected_date)]
-        if existing.empty:
+        records = water_ws.get_all_records()
+        updated = False
+
+        for i, row in enumerate(records, start=2):
+            if row["date"] == selected_date_str:
+                new_total = float(row["water"]) + water_amount
+                water_ws.update_cell(i, 2, new_total)
+                updated = True
+                break
+
+        if not updated:
             water_ws.append_row([selected_date_str, water_amount])
-        else:
-            row_index = existing.index[0] + 2
-            water_ws.update_cell(row_index,2,float(existing["water"].iloc[0]) + water_amount)
+
         load_water.clear()
         st.rerun()
 
-with water_right:
-    st.header("7 Day Water")
-    if not water_df.empty:
-        last7 = water_df[water_df["date"] >= pd.to_datetime(selected_date)-timedelta(days=6)]
-        st.line_chart(last7.set_index("date")["water"])
-
-# ==========================================================
-# NOTES + WEIGHT ROW
-# ==========================================================
-
-notes_left, weight_right = st.columns([1,1])
-
-with notes_left:
-    st.header("Daily Notes")
-
-    notes_df = load_notes()
-    existing_note = ""
-    if not notes_df.empty:
-        row = notes_df[notes_df["date"]==selected_date_str]
-        if not row.empty:
-            existing_note = row["notes"].iloc[0]
-
-    note_text = st.text_area("Notes", value=existing_note, height=150)
-
-    if st.button("Save Note"):
-        if notes_df.empty or selected_date_str not in notes_df["date"].values:
-            notes_ws.append_row([selected_date_str, note_text])
-        else:
-            row_index = notes_df.index[notes_df["date"]==selected_date_str][0] + 2
-            notes_ws.update_cell(row_index,2,note_text)
-        load_notes.clear()
-        st.success("Note saved.")
-
-with weight_right:
-    st.header("Weight")
-
+with input_col2:
+    st.subheader("Weight")
     weight_input = st.number_input("Enter weight", 0.0, step=0.1)
 
     if st.button("Save Weight"):
-        existing = weights_df[weights_df["date"]==pd.to_datetime(selected_date)]
-        if existing.empty:
+        records = weight_ws.get_all_records()
+        updated = False
+
+        for i, row in enumerate(records, start=2):
+            if row["date"] == selected_date_str:
+                weight_ws.update_cell(i, 2, weight_input)
+                updated = True
+                break
+
+        if not updated:
             weight_ws.append_row([selected_date_str, weight_input])
-        else:
-            row_index = existing.index[0] + 2
-            weight_ws.update_cell(row_index,2,weight_input)
+
         load_weights.clear()
         st.rerun()
 
+chart_col1, chart_col2 = st.columns(2)
+
+with chart_col1:
+    st.subheader("7 Day Water")
+    water_df = load_water()
+
+    if not water_df.empty:
+        last7 = water_df[
+            water_df["date"] >= pd.to_datetime(selected_date) - timedelta(days=6)
+        ]
+        if not last7.empty:
+            last7 = last7.sort_values("date")
+            st.line_chart(last7.set_index("date")["water"])
+
+with chart_col2:
+    st.subheader("Weight Trend")
     weights_df = load_weights()
+
     if not weights_df.empty:
         weights_df = weights_df.sort_values("date")
         weights_df["rolling_avg"] = weights_df["weight"].rolling(7).mean()
-        st.line_chart(weights_df.set_index("date")[["weight","rolling_avg"]])
+        st.line_chart(
+            weights_df.set_index("date")[["weight","rolling_avg"]]
+        )
+
+# ==========================================================
+# NOTES
+# ==========================================================
+
+st.divider()
+st.header("Daily Notes")
+
+notes_df = load_notes()
+existing_note = ""
+
+if not notes_df.empty:
+    row = notes_df[notes_df["date"]==selected_date_str]
+    if not row.empty:
+        existing_note = row["notes"].iloc[0]
+
+note_text = st.text_area("Notes", value=existing_note, height=200)
+
+if st.button("Save Note"):
+    records = notes_ws.get_all_records()
+    updated = False
+
+    for i, row in enumerate(records, start=2):
+        if row["date"] == selected_date_str:
+            notes_ws.update_cell(i, 2, note_text)
+            updated = True
+            break
+
+    if not updated:
+        notes_ws.append_row([selected_date_str, note_text])
+
+    load_notes.clear()
+    st.success("Note saved.")
