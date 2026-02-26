@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -96,27 +96,34 @@ def extract_macros(food):
 # =============================
 
 @st.cache_data(ttl=60)
-def load_water():
+def load_water_df():
     try:
         df = pd.DataFrame(water_ws.get_all_records())
         if df.empty:
-            return 0
-        df["date"] = df["date"].astype(str)
-        today = df[df["date"] == today_str]
-        if today.empty:
-            return 0
-        return float(today["water"].iloc[0])
+            return pd.DataFrame(columns=["date","water"])
+        df["date"] = pd.to_datetime(df["date"])
+        df["water"] = df["water"].astype(float)
+        return df.sort_values("date")
     except:
+        return pd.DataFrame(columns=["date","water"])
+
+def get_today_water(df):
+    today = df[df["date"] == pd.to_datetime(today_str)]
+    if today.empty:
         return 0
+    return float(today["water"].iloc[0])
 
 def update_water(amount):
-    df = pd.DataFrame(water_ws.get_all_records())
-    if df.empty or today_str not in df["date"].astype(str).values:
+    df = load_water_df()
+
+    if pd.to_datetime(today_str) not in df["date"].values:
         water_ws.append_row([today_str, amount])
     else:
-        row_index = df.index[df["date"].astype(str)==today_str][0] + 2
-        current = float(df.loc[df["date"].astype(str)==today_str,"water"].iloc[0])
-        water_ws.update_cell(row_index,2,current+amount)
+        row_index = df.index[df["date"]==pd.to_datetime(today_str)][0] + 2
+        current = df.loc[df["date"]==pd.to_datetime(today_str),"water"].iloc[0]
+        water_ws.update_cell(row_index,2,float(current)+amount)
+
+    load_water_df.clear()
 
 # =============================
 # SESSION STATE
@@ -128,69 +135,57 @@ if "daily_log" not in st.session_state:
 if "current_meal" not in st.session_state:
     st.session_state.current_meal = []
 
-if "water_total" not in st.session_state:
-    st.session_state.water_total = load_water()
-
 # =============================
 # UI
 # =============================
 
 st.title("Daily Macro & Water Tracker")
 
-left_col, right_col = st.columns([1,1])
+# ==========================================================
+# TOP ROW — FOOD + MACROS
+# ==========================================================
 
-# =============================
-# LEFT — FOOD INPUT
-# =============================
+top_left, top_right = st.columns([1,1])
 
-with left_col:
+# ---------- FOOD ENTRY ----------
+with top_left:
 
     st.header("Add Food")
 
-    entry_mode = st.radio(
-        "Entry Method",
-        ["Search USDA","Enter Macros Manually"],
-        horizontal=True
-    )
+    food_query = st.text_input("Search food")
 
-    # USDA
-    if entry_mode == "Search USDA":
-        food_query = st.text_input("Search food")
+    if st.button("Search"):
+        results = search_food(food_query)
+        if results:
+            st.session_state.search_results = results
 
-        if st.button("Search"):
-            results = search_food(food_query)
-            if results:
-                st.session_state.search_results = results
+    if "search_results" in st.session_state:
+        options = {
+            f"{f['description']} ({f.get('brandOwner','USDA')})": f
+            for f in st.session_state.search_results
+        }
 
-        if "search_results" in st.session_state:
-            options = {
-                f"{f['description']} ({f.get('brandOwner','USDA')})": f
-                for f in st.session_state.search_results
+        selected_label = st.selectbox("Select food", list(options.keys()))
+        food = options[selected_label]
+        macros = extract_macros(food)
+
+        servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
+
+        if st.button("Add to Current Meal"):
+            entry = {
+                "date": today_str,
+                "food": food["description"],
+                "servings": servings,
+                "calories": macros["calories"] * servings,
+                "protein": macros["protein"] * servings,
+                "fat": macros["fat"] * servings,
+                "carbs": macros["carbs"] * servings,
+                "sat_fat": macros["sat_fat"] * servings
             }
+            st.session_state.current_meal.append(entry)
+            st.success("Added.")
 
-            selected_label = st.selectbox("Select food", list(options.keys()))
-            food = options[selected_label]
-            macros = extract_macros(food)
-
-            servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
-
-            if st.button("Add to Current Meal"):
-                entry = {
-                    "date": today_str,
-                    "food": food["description"],
-                    "servings": servings,
-                    "calories": macros["calories"] * servings,
-                    "protein": macros["protein"] * servings,
-                    "fat": macros["fat"] * servings,
-                    "carbs": macros["carbs"] * servings,
-                    "sat_fat": macros["sat_fat"] * servings
-                }
-                st.session_state.current_meal.append(entry)
-                st.success("Added.")
-
-    # SAVE MEAL
     if st.session_state.current_meal:
-        st.subheader("Current Meal")
         st.dataframe(pd.DataFrame(st.session_state.current_meal))
 
         if st.button("Save Meal"):
@@ -200,13 +195,10 @@ with left_col:
             st.success("Meal saved.")
             st.rerun()
 
-# =============================
-# RIGHT — DASHBOARD
-# =============================
+# ---------- MACRO GRAPH ----------
+with top_right:
 
-with right_col:
-
-    st.header("Daily Totals")
+    st.header("Macro Totals")
 
     df = pd.DataFrame(st.session_state.daily_log)
 
@@ -232,24 +224,42 @@ with right_col:
 
         st.bar_chart(chart_data.set_index("Macro"))
 
-    # WATER TRACKER
-    st.divider()
-    st.subheader("Water Intake")
+# ==========================================================
+# SECOND ROW — WATER + 7 DAY GRAPH
+# ==========================================================
+
+water_left, water_right = st.columns([1,1])
+
+water_df = load_water_df()
+today_water = get_today_water(water_df)
+
+# ---------- WATER ENTRY ----------
+with water_left:
+
+    st.header("Water Intake")
 
     water_add = st.number_input("Add water (oz)", min_value=0.0, step=4.0)
 
     if st.button("Add Water"):
         update_water(water_add)
-        st.session_state.water_total += water_add
         st.success("Water added.")
         st.rerun()
 
-    st.markdown(f"**{round(st.session_state.water_total,1)} oz / {WATER_GOAL} oz**")
-    st.progress(min(st.session_state.water_total/WATER_GOAL,1.0))
+    st.markdown(f"**{round(today_water,1)} oz / {WATER_GOAL} oz**")
+    st.progress(min(today_water/WATER_GOAL,1.0))
 
-# =============================
+# ---------- 7 DAY WATER GRAPH ----------
+with water_right:
+
+    st.header("Last 7 Days")
+
+    if not water_df.empty:
+        last_7 = water_df[water_df["date"] >= pd.to_datetime(today_str) - timedelta(days=6)]
+        st.line_chart(last_7.set_index("date")["water"])
+
+# ==========================================================
 # TODAY'S LOG
-# =============================
+# ==========================================================
 
 st.divider()
 st.header("Today's Log")
@@ -273,8 +283,6 @@ if not df.empty:
                 st.session_state.daily_log.pop(i)
                 rewrite_daily_sheet(st.session_state.daily_log)
                 st.rerun()
-else:
-    st.info("No entries yet.")
 
 if st.button("End Day"):
     st.session_state.daily_log = []
