@@ -274,47 +274,7 @@ with right:
         st.bar_chart(chart_df)
 
 # ==========================================================
-# WATER + WEIGHT (COMBINED CHART ROW)
-# ==========================================================
-
-import altair as alt
-
-row_left, row_right = st.columns([1,2])
-
-# ---------------- LEFT SIDE (STACKED INPUTS) ----------------
-with row_left:
-    st.header("Water & Weight")
-
-    # -------- WATER INPUT --------
-    water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
-
-    if st.button("Add Water"):
-        existing = water_df[water_df["date"]==pd.to_datetime(selected_date)]
-        if existing.empty:
-            water_ws.append_row([selected_date_str, water_amount])
-        else:
-            row_index = existing.index[0] + 2
-            water_ws.update_cell(row_index,2,float(existing["water"].iloc[0]) + water_amount)
-        load_water.clear()
-        st.rerun()
-
-    st.divider()
-
-    # -------- WEIGHT INPUT --------
-    weight_input = st.number_input("Enter weight", 0.0, step=0.1)
-
-    if st.button("Save Weight"):
-        existing = weights_df[weights_df["date"]==pd.to_datetime(selected_date)]
-        if existing.empty:
-            weight_ws.append_row([selected_date_str, weight_input])
-        else:
-            row_index = existing.index[0] + 2
-            weight_ws.update_cell(row_index,2,weight_input)
-        load_weights.clear()
-        st.rerun()
-
-# ==========================================================
-# 7 DAY WATER & WEIGHT COMBINED CHART
+# 7 DAY WATER & WEIGHT COMBINED CHART (NO MERGE VERSION)
 # ==========================================================
 
 import altair as alt
@@ -325,93 +285,74 @@ with row_right:
     water_df = load_water()
     weights_df = load_weights()
 
-    if not water_df.empty or not weights_df.empty:
+    start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-        start_date = pd.to_datetime(selected_date) - timedelta(days=6)
+    water_last7 = water_df[water_df["date"] >= start_date].copy()
+    weight_last7 = weights_df[weights_df["date"] >= start_date].copy()
 
-        water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
-        weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
+    if not water_last7.empty or not weight_last7.empty:
 
-        water_last7["date"] = pd.to_datetime(water_last7["date"])
-        weight_last7["date"] = pd.to_datetime(weight_last7["date"])
+        water_last7["date"] = pd.to_datetime(water_last7["date"]).dt.date
+        weight_last7["date"] = pd.to_datetime(weight_last7["date"]).dt.date
 
-        combined = pd.merge(
-            water_last7,
-            weight_last7,
-            on="date",
-            how="outer"
-        ).sort_values("date")
-
-        combined = combined.dropna(how="all", subset=["water","weight"])
-
-        if not combined.empty:
-
-            combined["date"] = pd.to_datetime(combined["date"]).dt.date
-
-            base = alt.Chart(combined).encode(
-                x=alt.X(
-                    "date:T",
-                    title="Date",
-                    axis=alt.Axis(format="%b %d")
-                )
+        # ---------------- WATER CHART ----------------
+        water_chart = alt.Chart(water_last7).mark_line(
+            color="#1f77b4",
+            strokeWidth=3
+        ).encode(
+            x=alt.X("date:T", axis=alt.Axis(format="%b %d")),
+            y=alt.Y(
+                "water:Q",
+                title="Water (oz)",
+                axis=alt.Axis(titleColor="#1f77b4")
             )
+        )
 
-            # ---------------- WATER LINE ----------------
-            water_line = base.mark_line(
-                color="#1f77b4",
-                strokeWidth=3
-            ).encode(
-                y=alt.Y("water:Q", title="Water (oz)"),
-                tooltip=["date:T", "water:Q"]
+        water_points = alt.Chart(water_last7).mark_point(
+            shape="triangle-up",
+            size=250,
+            color="#1f77b4"
+        ).encode(
+            x="date:T",
+            y="water:Q"
+        )
+
+        # ---------------- WEIGHT CHART ----------------
+        weight_chart = alt.Chart(weight_last7).mark_line(
+            color="#d62728",
+            strokeWidth=3
+        ).encode(
+            x="date:T",
+            y=alt.Y(
+                "weight:Q",
+                title="Weight",
+                scale=alt.Scale(domain=[300, 400]),
+                axis=alt.Axis(titleColor="#d62728")
             )
+        )
 
-            # ---------------- WATER TRIANGLE MARKERS ----------------
-            water_points = base.mark_point(
-                shape="triangle",
-                color="#1f77b4",
-                size=200  # larger than line
-            ).encode(
-                y="water:Q",
-                tooltip=["date:T", "water:Q"]
-            )
+        weight_points = alt.Chart(weight_last7).mark_point(
+            shape="triangle-up",
+            size=250,
+            color="#d62728"
+        ).encode(
+            x="date:T",
+            y="weight:Q"
+        )
 
-            # ---------------- WEIGHT LINE ----------------
-            weight_line = base.mark_line(
-                color="#d62728",
-                strokeWidth=3
-            ).encode(
-                y=alt.Y(
-                    "weight:Q",
-                    title="Weight",
-                    scale=alt.Scale(domain=[300, 400]),
-                    axis=alt.Axis(titleColor="#d62728")
-                ),
-                tooltip=["date:T", "weight:Q"]
-            )
+        chart = alt.layer(
+            water_chart,
+            water_points,
+            weight_chart,
+            weight_points
+        ).resolve_scale(
+            y="independent"
+        )
 
-            # ---------------- WEIGHT TRIANGLE MARKERS ----------------
-            weight_points = base.mark_point(
-                shape="triangle",
-                color="#d62728",
-                size=200  # larger than line
-            ).encode(
-                y="weight:Q",
-                tooltip=["date:T", "weight:Q"]
-            )
+        st.altair_chart(chart, use_container_width=True)
 
-            chart = alt.layer(
-                water_line,
-                water_points,
-                weight_line,
-                weight_points
-            ).resolve_scale(
-                y="independent"
-            )
-
-            st.altair_chart(chart, use_container_width=True)
-
-        else:
-            st.info("No data available for last 7 days.")
+    else:
+        st.info("No data available for last 7 days.")
 
 # ==========================================================
 # NOTES (FULL ROW)
@@ -451,6 +392,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
