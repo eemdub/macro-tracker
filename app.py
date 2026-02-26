@@ -235,77 +235,86 @@ with right:
         st.bar_chart(pd.DataFrame({"%":values}, index=labels))
 
 # ==========================================================
-# WATER + WEIGHT ROW
+# 7 DAY WATER & WEIGHT CHART (CORRECT DUAL AXIS VERSION)
 # ==========================================================
-
-row_left, row_right = st.columns([1,2])
-
-with row_left:
-    st.header("Water & Weight")
-
-    water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
-    if st.button("Add Water"):
-        water_ws.append_row([selected_date_str, water_amount])
-        load_water.clear()
-        st.rerun()
-
-    st.divider()
-
-    weight_input = st.number_input("Enter weight", 0.0, step=0.1)
-    if st.button("Save Weight"):
-        weight_ws.append_row([selected_date_str, weight_input])
-        load_weights.clear()
-        st.rerun()
 
 with row_right:
     st.header("7 Day Water & Weight")
 
     start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-    water_last7 = water_df[water_df["date"] >= start_date] if not water_df.empty else pd.DataFrame()
-    weight_last7 = weights_df[weights_df["date"] >= start_date] if not weights_df.empty else pd.DataFrame()
+    water_last7 = water_df[water_df["date"] >= start_date].copy() if not water_df.empty else pd.DataFrame()
+    weight_last7 = weights_df[weights_df["date"] >= start_date].copy() if not weights_df.empty else pd.DataFrame()
 
-    layers = []
+    # Prepare clean combined dataframe
+    combined = pd.DataFrame()
 
     if not water_last7.empty:
         water_last7["date"] = water_last7["date"].dt.date
-        water_line = alt.Chart(water_last7).mark_line(
-            color="blue",
-            strokeWidth=4
-        ).encode(
-            x=alt.X("date:T", axis=alt.Axis(format="%b %d")),
-            y=alt.Y("water:Q", scale=alt.Scale(domain=[0,80]), title="Water (oz)")
-        )
-        water_points = alt.Chart(water_last7).mark_point(
-            color="blue",
-            size=200
-        ).encode(
-            x="date:T",
-            y="water:Q"
-        )
-        layers.extend([water_line, water_points])
+        combined = water_last7[["date", "water"]].copy()
 
     if not weight_last7.empty:
         weight_last7["date"] = weight_last7["date"].dt.date
-        weight_line = alt.Chart(weight_last7).mark_line(
-            color="green",
-            strokeWidth=4
-        ).encode(
-            x="date:T",
-            y=alt.Y("weight:Q", scale=alt.Scale(domain=[300,400]), title="Weight")
+        if combined.empty:
+            combined = weight_last7[["date", "weight"]].copy()
+        else:
+            combined = pd.merge(combined, weight_last7[["date","weight"]], on="date", how="outer")
+
+    if not combined.empty:
+
+        base = alt.Chart(combined).encode(
+            x=alt.X("date:T", axis=alt.Axis(format="%b %d"))
         )
-        weight_points = alt.Chart(weight_last7).mark_point(
-            color="green",
-            size=200
+
+        # WATER LAYER
+        water_line = base.mark_line(
+            strokeWidth=4,
+            color="blue"
         ).encode(
-            x="date:T",
+            y=alt.Y(
+                "water:Q",
+                scale=alt.Scale(domain=[0,80]),
+                axis=alt.Axis(title="Water (oz)", orient="left")
+            )
+        )
+
+        water_points = base.mark_point(
+            size=200,
+            color="blue"
+        ).encode(
+            y="water:Q"
+        )
+
+        # WEIGHT LAYER
+        weight_line = base.mark_line(
+            strokeWidth=4,
+            color="green"
+        ).encode(
+            y=alt.Y(
+                "weight:Q",
+                scale=alt.Scale(domain=[300,400]),
+                axis=alt.Axis(title="Weight (lbs)", orient="right")
+            )
+        )
+
+        weight_points = base.mark_point(
+            size=200,
+            color="green"
+        ).encode(
             y="weight:Q"
         )
-        layers.extend([weight_line, weight_points])
 
-    if layers:
-        chart = alt.layer(*layers).resolve_scale(y="independent")
+        chart = alt.layer(
+            water_line,
+            water_points,
+            weight_line,
+            weight_points
+        ).resolve_scale(
+            y="independent"
+        )
+
         st.altair_chart(chart, use_container_width=True)
+
     else:
         st.info("No data available for last 7 days.")
 
@@ -337,3 +346,4 @@ with colA:
 with colB:
     if st.button("End Day"):
         st.success("Day Complete")
+
