@@ -20,11 +20,13 @@ gc = gspread.authorize(creds)
 sheet = gc.open_by_key(st.secrets["gcp_service_account"]["sheet_id"])
 worksheet = sheet.sheet1
 
+# Updated Daily Goals
 DAILY_GOALS = {
     "calories": 2000,
     "protein": 130,
     "fat": 70,
-    "carbs": 130
+    "carbs": 130,
+    "sat_fat": 15  # NEW
 }
 
 # =============================
@@ -62,7 +64,8 @@ def extract_macros(food):
         "calories": 0,
         "protein": 0,
         "fat": 0,
-        "carbs": 0
+        "carbs": 0,
+        "sat_fat": 0
     }
 
     for n in nutrients:
@@ -74,6 +77,8 @@ def extract_macros(food):
             macros["fat"] = n["value"]
         elif n["nutrientId"] == 1005:
             macros["carbs"] = n["value"]
+        elif n["nutrientId"] == 1258:  # Saturated fat
+            macros["sat_fat"] = n["value"]
 
     return macros
 
@@ -102,9 +107,8 @@ entry_mode = st.radio(
 
 if entry_mode == "Search USDA":
 
-    with st.form("search_form", clear_on_submit=False):
-
-        col1, col2 = st.columns([6, 1], vertical_alignment="bottom")
+    with st.form("search_form"):
+        col1, col2 = st.columns([6, 1])
 
         with col1:
             food_query = st.text_input("Enter food name")
@@ -118,6 +122,64 @@ if entry_mode == "Search USDA":
             st.session_state.search_results = results
         else:
             st.error("No foods found.")
+
+    if "search_results" in st.session_state:
+
+        options = {
+            f"{food['description']} ({food.get('brandOwner','USDA')})": food
+            for food in st.session_state.search_results
+        }
+
+        selected_label = st.selectbox("Select correct food:", list(options.keys()))
+        selected_food = options[selected_label]
+        st.session_state.current_food = selected_food
+
+    if st.session_state.current_food:
+
+        food = st.session_state.current_food
+        macros = extract_macros(food)
+
+        serving_size = food.get("servingSize")
+        serving_unit = food.get("servingSizeUnit")
+        household = food.get("householdServingFullText")
+
+        st.subheader("Serving Information")
+
+        if serving_size:
+
+            if household:
+                st.write(f"1 USDA serving = {household} ({serving_size} {serving_unit})")
+            else:
+                st.write(f"1 USDA serving = {serving_size} {serving_unit}")
+
+            servings = st.number_input(
+                "How many servings did you eat?",
+                min_value=0.0,
+                step=0.5
+            )
+
+            if st.button("Add to Daily Log"):
+
+                entry = {
+                    "date": str(date.today()),
+                    "food": food["description"],
+                    "calories": macros["calories"] * servings,
+                    "protein": macros["protein"] * servings,
+                    "fat": macros["fat"] * servings,
+                    "carbs": macros["carbs"] * servings,
+                    "sat_fat": macros["sat_fat"] * servings
+                }
+
+                st.session_state.daily_log.append(entry)
+                st.success("Food added.")
+                st.session_state.current_food = None
+
+        else:
+            st.warning(
+                "This item does not have a USDA serving size available. "
+                "Please use manual macro entry for this item."
+            )
+
 # =============================
 # MANUAL MODE
 # =============================
@@ -133,6 +195,7 @@ if entry_mode == "Enter Macros Manually":
     with col1:
         manual_protein = st.number_input("Protein (g)", min_value=0.0)
         manual_fat = st.number_input("Fat (g)", min_value=0.0)
+        manual_sat_fat = st.number_input("Saturated Fat (g)", min_value=0.0)
 
     with col2:
         manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
@@ -153,14 +216,15 @@ if entry_mode == "Enter Macros Manually":
             "calories": calculated_calories,
             "protein": manual_protein,
             "fat": manual_fat,
-            "carbs": manual_carbs
+            "carbs": manual_carbs,
+            "sat_fat": manual_sat_fat
         }
 
         st.session_state.daily_log.append(entry)
         st.success("Manual entry added.")
 
 # =============================
-# TODAY'S LOG + DELETE
+# TODAY'S LOG
 # =============================
 
 st.header("Today's Log")
@@ -172,18 +236,15 @@ if not df.empty:
     for i, row in df.iterrows():
 
         col1, col2 = st.columns([6, 1])
-
-        # Determine if high carb
         high_carb = row["carbs"] > 30
 
         with col1:
-
             food_display = f"**{row['food']}**"
-
             macro_text = (
                 f"{round(row['calories'],1)} cal | "
                 f"P: {round(row['protein'],1)}g | "
                 f"F: {round(row['fat'],1)}g | "
+                f"Sat: {round(row['sat_fat'],1)}g | "
                 f"C: {round(row['carbs'],1)}g"
             )
 
@@ -203,34 +264,32 @@ if not df.empty:
                 st.rerun()
 
     df = pd.DataFrame(st.session_state.daily_log)
-    totals = df[["calories", "protein", "fat", "carbs"]].sum()
-
-   st.divider()
-st.header("Daily Dashboard")
-
-col1, col2, col3, col4 = st.columns(4)
-
-def metric_with_color(label, value, goal):
-    if value > goal:
-        st.markdown(
-            f"<div style='color:red;font-weight:bold'>{label}<br>{round(value,1)}</div>",
-            unsafe_allow_html=True
-        )
-    else:
-        st.metric(label, round(value,1))
-
-metric_with_color("Calories", totals["calories"], DAILY_GOALS["calories"])
-metric_with_color("Protein (g)", totals["protein"], DAILY_GOALS["protein"])
-metric_with_color("Fat (g)", totals["fat"], DAILY_GOALS["fat"])
-metric_with_color("Carbs (g)", totals["carbs"], DAILY_GOALS["carbs"])
+    totals = df[["calories","protein","fat","carbs","sat_fat"]].sum()
 
     st.divider()
-    st.subheader("Progress Toward Goals")
+    st.header("Daily Dashboard")
 
-    for macro in DAILY_GOALS:
-        percent = totals[macro] / DAILY_GOALS[macro]
-        st.write(f"{macro.capitalize()} ({round(totals[macro],1)} / {DAILY_GOALS[macro]})")
-        st.progress(min(percent, 1.0))
+    def metric_with_color(label, value, goal):
+        if value > goal:
+            st.markdown(
+                f"<div style='color:red;font-weight:bold'>{label}<br>{round(value,1)}</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.metric(label, round(value,1))
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        metric_with_color("Calories", totals["calories"], DAILY_GOALS["calories"])
+    with col2:
+        metric_with_color("Protein (g)", totals["protein"], DAILY_GOALS["protein"])
+    with col3:
+        metric_with_color("Fat (g)", totals["fat"], DAILY_GOALS["fat"])
+    with col4:
+        metric_with_color("Carbs (g)", totals["carbs"], DAILY_GOALS["carbs"])
+    with col5:
+        metric_with_color("Sat Fat (g)", totals["sat_fat"], DAILY_GOALS["sat_fat"])
 
 else:
     st.info("No food logged yet today.")
@@ -249,10 +308,3 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
-
-
-
-
-
-
-
