@@ -206,42 +206,42 @@ with left_col:
 
             st.write(f"Calories: {round(manual_calories,1)}")
 
-       else:
-        manual_name = st.text_input("Food name")
-    
-        st.markdown("### Macros Per 1 Serving")
-    
-        r1c1, r1c2 = st.columns(2)
-        with r1c1:
-            per_serving_protein = st.number_input("Protein (g)", min_value=0.0)
-        with r1c2:
-            per_serving_carbs = st.number_input("Carbs (g)", min_value=0.0)
-    
-        r2c1, r2c2 = st.columns(2)
-        with r2c1:
-            per_serving_fat = st.number_input("Fat (g)", min_value=0.0)
-        with r2c2:
-            per_serving_sat = st.number_input("Sat Fat (g)", min_value=0.0)
-    
-        servings = st.number_input(
-            "Servings eaten",
-            min_value=1.0,
-            step=0.5
-        )
-    
-        # Multiply by servings
-        manual_protein = per_serving_protein * servings
-        manual_carbs = per_serving_carbs * servings
-        manual_fat = per_serving_fat * servings
-        manual_sat = per_serving_sat * servings
-    
-        manual_calories = (
-            per_serving_protein * 4 +
-            per_serving_carbs * 4 +
-            per_serving_fat * 9
-        ) * servings
-    
-        st.write(f"Total Calories: {round(manual_calories,1)}")
+           else:
+            manual_name = st.text_input("Food name")
+        
+            st.markdown("### Macros Per 1 Serving")
+        
+            r1c1, r1c2 = st.columns(2)
+            with r1c1:
+                per_serving_protein = st.number_input("Protein (g)", min_value=0.0)
+            with r1c2:
+                per_serving_carbs = st.number_input("Carbs (g)", min_value=0.0)
+        
+            r2c1, r2c2 = st.columns(2)
+            with r2c1:
+                per_serving_fat = st.number_input("Fat (g)", min_value=0.0)
+            with r2c2:
+                per_serving_sat = st.number_input("Sat Fat (g)", min_value=0.0)
+        
+            servings = st.number_input(
+                "Servings eaten",
+                min_value=1.0,
+                step=0.5
+            )
+        
+            # Multiply by servings
+            manual_protein = per_serving_protein * servings
+            manual_carbs = per_serving_carbs * servings
+            manual_fat = per_serving_fat * servings
+            manual_sat = per_serving_sat * servings
+        
+            manual_calories = (
+                per_serving_protein * 4 +
+                per_serving_carbs * 4 +
+                per_serving_fat * 9
+            ) * servings
+        
+            st.write(f"Total Calories: {round(manual_calories,1)}")
 
         if st.button("Add to Current Meal"):
             entry = {
@@ -392,6 +392,7 @@ if not weights_df.empty:
     st.line_chart(weights_df.set_index("date")["weight"])
 
 st.divider()
+
 
 
 
