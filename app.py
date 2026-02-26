@@ -21,10 +21,10 @@ sheet = gc.open_by_key(st.secrets["gcp_service_account"]["sheet_id"])
 worksheet = sheet.sheet1
 
 DAILY_GOALS = {
-    "calories": 1800,
-    "protein": 120,
-    "fat": 60,
-    "carbs": 180
+    "calories": 2000,
+    "protein": 130,
+    "fat": 70,
+    "carbs": 130
 }
 
 # =============================
@@ -225,6 +225,7 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
 
 
