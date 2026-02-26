@@ -35,7 +35,7 @@ today_str = str(date.today())
 # =============================
 
 if "daily_log" not in st.session_state:
-    st.session_state.daily_log = []
+    st.session_state.daily_log = load_today_meals()
 
 if "current_meal" not in st.session_state:
     st.session_state.current_meal = []
@@ -68,6 +68,23 @@ def extract_macros(food):
 
 def append_meal(rows):
     daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
+
+def load_today_meals():
+    try:
+        data = daily_ws.get_all_records()
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return []
+
+        df["date"] = df["date"].astype(str)
+
+        today_df = df[df["date"] == today_str]
+
+        return today_df.to_dict("records")
+
+    except:
+        return []
 
 # =============================
 # SAVED FOODS
@@ -371,4 +388,5 @@ if not weights_df.empty:
     weights_df = weights_df.sort_values("date")
     st.subheader("Weight Trend")
     st.line_chart(weights_df.set_index("date")["weight"])
+
 
