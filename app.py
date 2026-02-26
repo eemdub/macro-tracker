@@ -205,6 +205,7 @@ with left:
     # MANUAL ENTRY (STRUCTURED)
     # ------------------------------------------------------
     else:
+        name = st.text_input("Food name")
 
         col1, col2 = st.columns(2)
 
@@ -221,7 +222,6 @@ with left:
         st.markdown(f"**Calories (per serving): {round(calories_per_serving,1)} kcal**")
 
         servings = st.number_input("Total Servings", 1.0)
-        name = st.text_input("Food name")
 
         if st.button("Add Manual Food"):
             daily_ws.append_row([
@@ -382,4 +382,5 @@ if st.button("Save Note"):
         notes_ws.append_row([selected_date_str, note_text])
     load_notes.clear()
     st.success("Note saved.")
+
 
