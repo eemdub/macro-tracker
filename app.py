@@ -9,15 +9,16 @@ from google.oauth2.service_account import Credentials
 
 st.set_page_config(layout="wide")
 
-USDA_API_KEY = st.secrets["USDA_API_KEY"]
-
 creds = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
     scopes=["https://www.googleapis.com/auth/spreadsheets"]
 )
 
 gc = gspread.authorize(creds)
-sheet = gc.open_by_key(st.secrets["sheet_id"])
+
+sheet = gc.open_by_key(
+    st.secrets["gcp_service_account"]["sheet_id"]
+)
 
 daily_ws = sheet.worksheet("Daily Foods")
 saved_ws = sheet.worksheet("Saved Foods")
@@ -238,3 +239,4 @@ if st.button("Save Note"):
     load_notes.clear()
     st.success("Saved")
     st.rerun()
+
