@@ -217,9 +217,10 @@ with left:
         with col2:
             carbs = st.number_input("Carbs (g)", 0.0)
             sat = st.number_input("Saturated Fat (g)", 0.0)
+            calories_per_serving = protein*4 + carbs*4 + fat*9
+            st.markdown(f"**Calories (per serving): {round(calories_per_serving,1)} kcal**")
 
-        calories_per_serving = protein*4 + carbs*4 + fat*9
-        st.markdown(f"**Calories (per serving): {round(calories_per_serving,1)} kcal**")
+        
 
         servings = st.number_input("Total Servings", 1.0)
 
@@ -382,5 +383,6 @@ if st.button("Save Note"):
         notes_ws.append_row([selected_date_str, note_text])
     load_notes.clear()
     st.success("Note saved.")
+
 
 
