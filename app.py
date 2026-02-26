@@ -18,7 +18,7 @@ creds = Credentials.from_service_account_info(
 
 gc = gspread.authorize(creds)
 sheet = gc.open_by_key(st.secrets["gcp_service_account"]["sheet_id"])
-worksheet = sheet.sheet1
+daily_ws = sheet.sheet1
 
 DAILY_GOALS = {
     "calories": 2000,
@@ -38,9 +38,6 @@ if "daily_log" not in st.session_state:
 if "current_meal" not in st.session_state:
     st.session_state.current_meal = []
 
-if "current_food" not in st.session_state:
-    st.session_state.current_food = None
-
 # =============================
 # HELPERS
 # =============================
@@ -53,13 +50,11 @@ def search_food(food_name):
         "pageSize": 5
     }
     response = requests.get(url, params=params)
-    data = response.json()
-    return data.get("foods")
+    return response.json().get("foods")
 
 def extract_macros(food):
     nutrients = food.get("foodNutrients", [])
     macros = {"calories":0,"protein":0,"fat":0,"carbs":0,"sat_fat":0}
-
     for n in nutrients:
         if n["nutrientId"] == 1008:
             macros["calories"] = n["value"]
@@ -71,22 +66,91 @@ def extract_macros(food):
             macros["carbs"] = n["value"]
         elif n["nutrientId"] == 1258:
             macros["sat_fat"] = n["value"]
-
     return macros
 
-def append_to_sheet(rows):
-    worksheet.append_rows(rows, value_input_option="USER_ENTERED")
+def append_meal(rows):
+    daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
+
+# -----------------------------
+# SAVED FOODS
+# -----------------------------
+
+def load_saved_foods():
+    try:
+        ws = sheet.worksheet("SavedFoods")
+        return pd.DataFrame(ws.get_all_records())
+    except:
+        return pd.DataFrame(columns=[
+            "food","servings","calories","protein","fat","sat_fat","carbs"
+        ])
+
+def save_food_to_library(entry):
+    ws = sheet.worksheet("SavedFoods")
+    ws.append_row([
+        entry["food"],
+        1,
+        entry["calories"],
+        entry["protein"],
+        entry["fat"],
+        entry["sat_fat"],
+        entry["carbs"]
+    ])
+
+# -----------------------------
+# WEIGHT TRACKING
+# -----------------------------
+
+def load_weights():
+    try:
+        ws = sheet.worksheet("Weights")
+        return pd.DataFrame(ws.get_all_records())
+    except:
+        return pd.DataFrame(columns=["date","weight"])
+
+def save_weight(weight):
+    ws = sheet.worksheet("Weights")
+    ws.append_row([str(date.today()), weight])
+
+# =============================
+# UI
+# =============================
+
+st.title("Daily Macro Tracker")
+
+# =============================
+# DAILY WEIGHT
+# =============================
+
+st.header("Daily Weight")
+
+weights_df = load_weights()
+today_str = str(date.today())
+
+if not weights_df.empty and today_str in weights_df["date"].astype(str).values:
+    today_weight = weights_df[weights_df["date"]==today_str]["weight"].iloc[0]
+    st.success(f"Today's weight logged: {today_weight}")
+else:
+    weight_input = st.number_input("Enter today's weight", min_value=0.0, step=0.1)
+    if st.button("Save Weight"):
+        save_weight(weight_input)
+        st.success("Weight saved.")
+        st.rerun()
+
+if not weights_df.empty:
+    weights_df["date"] = pd.to_datetime(weights_df["date"])
+    weights_df = weights_df.sort_values("date")
+    st.line_chart(weights_df.set_index("date")["weight"])
+
+st.divider()
 
 # =============================
 # LAYOUT
 # =============================
 
-st.title("Daily Macro Tracker")
-
 left_col, right_col = st.columns([1,1])
 
 # =============================
-# LEFT COLUMN — INPUT
+# LEFT — INPUT
 # =============================
 
 with left_col:
@@ -94,98 +158,101 @@ with left_col:
     st.header("Add Food")
 
     entry_mode = st.radio(
-        "Select Entry Method:",
+        "Entry Method",
         ["Search USDA","Enter Macros Manually"],
         horizontal=True
     )
 
-    # -------------------------
     # USDA MODE
-    # -------------------------
-
     if entry_mode == "Search USDA":
 
-        with st.form("search_form"):
-            food_query = st.text_input("Enter food name")
-            submitted = st.form_submit_button("Search")
-
-        if submitted:
+        food_query = st.text_input("Search food")
+        if st.button("Search"):
             results = search_food(food_query)
             if results:
                 st.session_state.search_results = results
-            else:
-                st.error("No foods found.")
 
         if "search_results" in st.session_state:
 
             options = {
-                f"{food['description']} ({food.get('brandOwner','USDA')})": food
-                for food in st.session_state.search_results
+                f"{f['description']} ({f.get('brandOwner','USDA')})": f
+                for f in st.session_state.search_results
             }
 
-            selected_label = st.selectbox("Select correct food:", list(options.keys()))
-            selected_food = options[selected_label]
+            selected = st.selectbox("Select food", list(options.keys()))
+            food = options[selected]
+            macros = extract_macros(food)
 
-            macros = extract_macros(selected_food)
+            serving_size = food.get("servingSize")
+            serving_unit = food.get("servingSizeUnit")
 
-            serving_size = selected_food.get("servingSize")
-            serving_unit = selected_food.get("servingSizeUnit")
+            servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
 
-            if serving_size:
-                servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
-
-                if serving_unit and serving_unit.lower()=="g":
-                    multiplier = (serving_size/100)*servings
-                else:
-                    multiplier = servings
+            if serving_size and serving_unit and serving_unit.lower()=="g":
+                multiplier = (serving_size/100)*servings
             else:
-                servings = st.number_input("Estimated 100g servings", min_value=0.0, step=0.5)
                 multiplier = servings
 
             if st.button("Add to Current Meal"):
-
                 entry = {
-                    "date": str(date.today()),
-                    "food": selected_food["description"],
+                    "date": today_str,
+                    "food": food["description"],
                     "calories": macros["calories"]*multiplier,
                     "protein": macros["protein"]*multiplier,
                     "fat": macros["fat"]*multiplier,
                     "carbs": macros["carbs"]*multiplier,
-                    "sat_fat": macros.get("sat_fat",0)*multiplier
+                    "sat_fat": macros["sat_fat"]*multiplier
                 }
-
                 st.session_state.current_meal.append(entry)
-                st.success("Added to meal.")
+                st.success("Added.")
 
-    # -------------------------
     # MANUAL MODE
-    # -------------------------
-
     if entry_mode == "Enter Macros Manually":
 
-        manual_name = st.text_input("Food name")
+        saved_df = load_saved_foods()
 
-        r1c1,r1c2 = st.columns(2)
-        with r1c1:
-            manual_protein = st.number_input("Protein (g)", min_value=0.0)
-        with r1c2:
-            manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
+        if not saved_df.empty:
+            options = ["Enter New Food"] + list(saved_df["food"])
+            selected = st.selectbox("Saved or New", options)
+        else:
+            selected = "Enter New Food"
 
-        r2c1,r2c2 = st.columns(2)
-        with r2c1:
-            manual_fat = st.number_input("Fat (g)", min_value=0.0)
-        with r2c2:
-            manual_sat = st.number_input("Sat Fat (g)", min_value=0.0)
+        if selected != "Enter New Food":
+            row = saved_df[saved_df["food"]==selected].iloc[0]
+            multiplier = st.number_input("Servings", min_value=0.0, step=0.5)
 
-        calories = manual_protein*4 + manual_carbs*4 + manual_fat*9
-        st.write(f"Calories: {round(calories,1)}")
+            manual_name = selected
+            manual_calories = row["calories"]*multiplier
+            manual_protein = row["protein"]*multiplier
+            manual_fat = row["fat"]*multiplier
+            manual_carbs = row["carbs"]*multiplier
+            manual_sat = row["sat_fat"]*multiplier
+
+            st.write(f"Calories: {round(manual_calories,1)}")
+
+        else:
+            manual_name = st.text_input("Food name")
+
+            r1c1,r1c2 = st.columns(2)
+            with r1c1:
+                manual_protein = st.number_input("Protein (g)", min_value=0.0)
+            with r1c2:
+                manual_carbs = st.number_input("Carbs (g)", min_value=0.0)
+
+            r2c1,r2c2 = st.columns(2)
+            with r2c1:
+                manual_fat = st.number_input("Fat (g)", min_value=0.0)
+            with r2c2:
+                manual_sat = st.number_input("Sat Fat (g)", min_value=0.0)
+
+            manual_calories = manual_protein*4 + manual_carbs*4 + manual_fat*9
+            st.write(f"Calories: {round(manual_calories,1)}")
 
         if st.button("Add to Current Meal"):
-
             entry = {
-                "date": str(date.today()),
+                "date": today_str,
                 "food": manual_name,
-                "calories": calories,
+                "calories": manual_calories,
                 "protein": manual_protein,
                 "fat": manual_fat,
                 "carbs": manual_carbs,
@@ -193,31 +260,26 @@ with left_col:
             }
 
             st.session_state.current_meal.append(entry)
-            st.success("Added to meal.")
 
-    # -------------------------
+            if selected == "Enter New Food":
+                save_food_to_library(entry)
+
+            st.success("Added.")
+
     # SAVE MEAL
-    # -------------------------
-
     if st.session_state.current_meal:
-
         st.subheader("Current Meal")
+        st.dataframe(pd.DataFrame(st.session_state.current_meal))
 
-        meal_df = pd.DataFrame(st.session_state.current_meal)
-        st.dataframe(meal_df)
-
-        if st.button("Save Meal to Sheet"):
-
+        if st.button("Save Meal"):
             rows = [list(item.values()) for item in st.session_state.current_meal]
-            append_to_sheet(rows)
-
+            append_meal(rows)
             st.session_state.daily_log.extend(st.session_state.current_meal)
             st.session_state.current_meal = []
-
             st.success("Meal saved.")
 
 # =============================
-# RIGHT COLUMN — DASHBOARD
+# RIGHT — DASHBOARD
 # =============================
 
 with right_col:
@@ -227,12 +289,11 @@ with right_col:
     df = pd.DataFrame(st.session_state.daily_log)
 
     if not df.empty:
-
         totals = df.sum(numeric_only=True)
 
-        def macro_block(label,value,goal):
-            percent=value/goal
+        def block(label,value,goal):
             over=value>goal
+            percent=value/goal
 
             if over:
                 st.markdown(f"<span style='color:red;font-weight:bold'>{label}</span>",unsafe_allow_html=True)
@@ -244,25 +305,17 @@ with right_col:
             st.progress(min(percent,1.0))
             st.markdown("<br>",unsafe_allow_html=True)
 
-        macro_block("Calories",totals["calories"],DAILY_GOALS["calories"])
-        macro_block("Protein",totals["protein"],DAILY_GOALS["protein"])
-        macro_block("Fat",totals["fat"],DAILY_GOALS["fat"])
-        macro_block("Carbs",totals["carbs"],DAILY_GOALS["carbs"])
-        macro_block("Sat Fat",totals["sat_fat"],DAILY_GOALS["sat_fat"])
-
-# =============================
-# FOOD LOG
-# =============================
+        block("Calories",totals["calories"],DAILY_GOALS["calories"])
+        block("Protein",totals["protein"],DAILY_GOALS["protein"])
+        block("Fat",totals["fat"],DAILY_GOALS["fat"])
+        block("Carbs",totals["carbs"],DAILY_GOALS["carbs"])
+        block("Sat Fat",totals["sat_fat"],DAILY_GOALS["sat_fat"])
 
 st.divider()
-st.header("Today's Log")
 
+st.header("Today's Log")
 if not df.empty:
     st.dataframe(df)
-
-# =============================
-# END DAY
-# =============================
 
 if st.button("End Day"):
     st.session_state.daily_log=[]
