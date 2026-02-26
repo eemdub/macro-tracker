@@ -92,7 +92,8 @@ st.header("Add Food")
 
 entry_mode = st.radio(
     "Select Entry Method:",
-    ["Search USDA", "Enter Macros Manually"]
+    ["Search USDA", "Enter Macros Manually"],
+    horizontal=True
 )
 
 # =============================
@@ -224,6 +225,7 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
 
 
