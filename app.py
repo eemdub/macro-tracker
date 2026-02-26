@@ -75,7 +75,7 @@ def append_meal(rows):
 
 def load_saved_foods():
     try:
-        ws = sheet.worksheet("SavedFoods")
+        ws = sheet.worksheet("Saved Foods")
         return pd.DataFrame(ws.get_all_records())
     except:
         return pd.DataFrame(columns=[
@@ -83,7 +83,7 @@ def load_saved_foods():
         ])
 
 def save_food_to_library(entry):
-    ws = sheet.worksheet("SavedFoods")
+    ws = sheet.worksheet("Saved Foods")
     ws.append_row([
         entry["food"],
         1,
@@ -371,3 +371,4 @@ if not weights_df.empty:
     weights_df = weights_df.sort_values("date")
     st.subheader("Weight Trend")
     st.line_chart(weights_df.set_index("date")["weight"])
+
