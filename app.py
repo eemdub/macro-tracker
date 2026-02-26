@@ -160,6 +160,12 @@ with left_col:
 
                 multiplier = servings
 
+    # 🔥 FIX: USDA nutrients are often per 100g
+    if serving_unit and serving_unit.lower() == "g":
+        multiplier = (serving_size / 100) * servings
+    else:
+        multiplier = servings
+
             else:
                 st.warning("No USDA serving size available.")
                 st.write("Nutrition values are based on 100g.")
@@ -340,3 +346,4 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
