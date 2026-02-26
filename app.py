@@ -240,8 +240,10 @@ with left:
             st.rerun()
 
 # ==========================================================
-# MACRO VISUALIZATION (VERTICAL BAR)
+# MACRO VISUALIZATION (VERTICAL BAR WITH LABELS)
 # ==========================================================
+
+import altair as alt
 
 with right:
     st.header("Daily Totals")
@@ -253,18 +255,34 @@ with right:
         for k, goal in DAILY_GOALS.items():
             value = totals.get(k, 0)
             percent = value / goal if goal > 0 else 0
+
             chart_data.append({
                 "Macro": k.capitalize(),
-                "Percent of Goal": percent
+                "Percent": percent,
+                "Display": f"{round(value,1)} / {goal}"
             })
 
         chart_df = pd.DataFrame(chart_data)
-        st.bar_chart(chart_df.set_index("Macro"))
 
-        st.markdown("### Details")
-        for k, goal in DAILY_GOALS.items():
-            value = totals.get(k, 0)
-            st.write(f"{k.capitalize()}: {round(value,1)} / {goal}")
+        # Base bar chart
+        bars = alt.Chart(chart_df).mark_bar().encode(
+            x=alt.X("Macro:N", sort=None),
+            y=alt.Y("Percent:Q", scale=alt.Scale(domain=[0, 1.5])),
+        )
+
+        # Value labels above bars
+        text = alt.Chart(chart_df).mark_text(
+            dy=-5
+        ).encode(
+            x="Macro:N",
+            y="Percent:Q",
+            text="Display:N"
+        )
+
+        chart = bars + text
+
+        st.altair_chart(chart, use_container_width=True)
+
     else:
         st.info("No food logged for this day.")
 
@@ -364,3 +382,4 @@ if st.button("Save Note"):
         notes_ws.append_row([selected_date_str, note_text])
     load_notes.clear()
     st.success("Note saved.")
+
