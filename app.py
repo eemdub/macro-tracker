@@ -332,7 +332,6 @@ with row_right:
         water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
         weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
 
-        # Ensure datetime format
         water_last7["date"] = pd.to_datetime(water_last7["date"])
         weight_last7["date"] = pd.to_datetime(weight_last7["date"])
 
@@ -343,12 +342,10 @@ with row_right:
             how="outer"
         ).sort_values("date")
 
-        # Drop rows where both values missing
         combined = combined.dropna(how="all", subset=["water","weight"])
 
         if not combined.empty:
 
-            # Remove time portion (prevents AM/PM display)
             combined["date"] = pd.to_datetime(combined["date"]).dt.date
 
             base = alt.Chart(combined).encode(
@@ -359,24 +356,29 @@ with row_right:
                 )
             )
 
-            # Water line
+            # ---------------- WATER LINE ----------------
             water_line = base.mark_line(
                 color="#1f77b4",
-                strokeWidth=4,
-                point=True
+                strokeWidth=3
             ).encode(
-                y=alt.Y(
-                    "water:Q",
-                    title="Water (oz)"
-                ),
+                y=alt.Y("water:Q", title="Water (oz)"),
                 tooltip=["date:T", "water:Q"]
             )
 
-            # Weight line (fixed axis 300–400)
+            # ---------------- WATER TRIANGLE MARKERS ----------------
+            water_points = base.mark_point(
+                shape="triangle",
+                color="#1f77b4",
+                size=200  # larger than line
+            ).encode(
+                y="water:Q",
+                tooltip=["date:T", "water:Q"]
+            )
+
+            # ---------------- WEIGHT LINE ----------------
             weight_line = base.mark_line(
                 color="#d62728",
-                strokeWidth=4,
-                point=True
+                strokeWidth=3
             ).encode(
                 y=alt.Y(
                     "weight:Q",
@@ -387,9 +389,21 @@ with row_right:
                 tooltip=["date:T", "weight:Q"]
             )
 
+            # ---------------- WEIGHT TRIANGLE MARKERS ----------------
+            weight_points = base.mark_point(
+                shape="triangle",
+                color="#d62728",
+                size=200  # larger than line
+            ).encode(
+                y="weight:Q",
+                tooltip=["date:T", "weight:Q"]
+            )
+
             chart = alt.layer(
                 water_line,
-                weight_line
+                water_points,
+                weight_line,
+                weight_points
             ).resolve_scale(
                 y="independent"
             )
@@ -437,6 +451,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
