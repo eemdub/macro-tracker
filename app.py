@@ -65,12 +65,25 @@ def load_water():
 
 @st.cache_data(ttl=60)
 def load_weights():
-    df = pd.DataFrame(weight_ws.get_all_records())
-    if df.empty:
-        return df
-    df["date"] = pd.to_datetime(df["date"])
-    df["weight"] = df["weight"].astype(float)
-    return df.sort_values("date")
+    try:
+        df = pd.DataFrame(weight_ws.get_all_records())
+
+        if df.empty:
+            return df
+
+        # Only keep needed columns
+        df = df[["date", "weight"]]
+
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df["weight"] = pd.to_numeric(df["weight"], errors="coerce")
+
+        df = df.dropna(subset=["weight"])
+
+        return df.sort_values("date")
+
+    except Exception as e:
+        st.error(f"Weight loading error: {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def load_notes():
@@ -249,5 +262,6 @@ if st.button("Weekly Review"):
     if not last_7.empty:
         st.write("7-day avg calories:", round(last_7["calories"].mean(),1))
         st.write("7-day avg protein:", round(last_7["protein"].mean(),1))
+
 
 
