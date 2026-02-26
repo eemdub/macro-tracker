@@ -173,14 +173,29 @@ if not df.empty:
 
         col1, col2 = st.columns([6, 1])
 
+        # Determine if high carb
+        high_carb = row["carbs"] > 30
+
         with col1:
-            st.write(
-                f"{row['food']} | "
+
+            food_display = f"**{row['food']}**"
+
+            macro_text = (
                 f"{round(row['calories'],1)} cal | "
                 f"P: {round(row['protein'],1)}g | "
                 f"F: {round(row['fat'],1)}g | "
                 f"C: {round(row['carbs'],1)}g"
             )
+
+            if high_carb:
+                st.markdown(
+                    f"<div style='background-color:#ffe6e6;padding:8px;border-radius:5px'>"
+                    f"{food_display} | {macro_text}"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(f"{food_display} | {macro_text}")
 
         with col2:
             if st.button("Delete", key=f"delete_{i}"):
@@ -225,6 +240,7 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
 
 
