@@ -317,6 +317,8 @@ with row_left:
 # 7 DAY WATER & WEIGHT COMBINED CHART
 # ==========================================================
 
+import altair as alt
+
 with row_right:
     st.header("7 Day Water & Weight")
 
@@ -330,7 +332,7 @@ with row_right:
         water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
         weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
 
-        # Ensure both date columns are proper datetime
+        # Ensure datetime format
         water_last7["date"] = pd.to_datetime(water_last7["date"])
         weight_last7["date"] = pd.to_datetime(weight_last7["date"])
 
@@ -341,12 +343,12 @@ with row_right:
             how="outer"
         ).sort_values("date")
 
-        # Drop rows where both values are missing
+        # Drop rows where both values missing
         combined = combined.dropna(how="all", subset=["water","weight"])
 
         if not combined.empty:
 
-            # Remove time component (fixes the AM/PM issue)
+            # Remove time portion (prevents AM/PM display)
             combined["date"] = pd.to_datetime(combined["date"]).dt.date
 
             base = alt.Chart(combined).encode(
@@ -357,31 +359,32 @@ with row_right:
                 )
             )
 
-            # Thicker water line
+            # Water line
             water_line = base.mark_line(
-                color="blue",
-                strokeWidth=4
+                color="#1f77b4",
+                strokeWidth=4,
+                point=True
             ).encode(
                 y=alt.Y(
                     "water:Q",
                     title="Water (oz)"
-                )
+                ),
+                tooltip=["date:T", "water:Q"]
             )
 
-            max_weight = combined["weight"].max(),
-            
-            # Thicker weight line (starts at 300)
+            # Weight line (fixed axis 300–400)
             weight_line = base.mark_line(
-                color="red",
-                strokeWidth=4
+                color="#d62728",
+                strokeWidth=4,
+                point=True
             ).encode(
                 y=alt.Y(
                     "weight:Q",
                     title="Weight",
-                    scale=alt.Scale(domain=[300, max_weight + 5]),
                     scale=alt.Scale(domain=[300, 400]),
-                    axis=alt.Axis(titleColor="red")
-                )
+                    axis=alt.Axis(titleColor="#d62728")
+                ),
+                tooltip=["date:T", "weight:Q"]
             )
 
             chart = alt.layer(
@@ -434,6 +437,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
