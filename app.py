@@ -350,7 +350,13 @@ with row_right:
         )
 
         weight_line = base.mark_line(color="red").encode(
-            y=alt.Y("weight:Q", title="Weight", axis=alt.Axis(titleColor="red"))
+            y=alt.Y(
+                "weight:Q",
+                title="Weight",
+                scale=alt.Scale(domain=[300, None]),  # START AT 300
+                axis=alt.Axis(titleColor="red")
+    )
+)
         )
 
         chart = alt.layer(water_line, weight_line).resolve_scale(
@@ -399,5 +405,6 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
