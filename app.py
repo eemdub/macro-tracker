@@ -368,6 +368,8 @@ with row_right:
                 )
             )
 
+            max_weight = combined["weight"].max(),
+            
             # Thicker weight line (starts at 300)
             weight_line = base.mark_line(
                 color="red",
@@ -376,7 +378,6 @@ with row_right:
                 y=alt.Y(
                     "weight:Q",
                     title="Weight",
-                    max_weight = combined["weight"].max(),
                     scale=alt.Scale(domain=[300, max_weight + 5]),
                     scale=alt.Scale(domain=[300, 400]),
                     axis=alt.Axis(titleColor="red")
@@ -433,6 +434,7 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
 
 
