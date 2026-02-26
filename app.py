@@ -146,7 +146,7 @@ with top3:
     st.markdown(f"Weight: {calculate_streak(weights_df['date'].dt.strftime('%Y-%m-%d').tolist() if not weights_df.empty else [])}")
 
 # ==========================================================
-# FOOD + MACROS ROW
+# FOOD + MACRO CHART
 # ==========================================================
 
 left, right = st.columns([1,1])
@@ -157,7 +157,6 @@ with left:
 
     entry_mode = st.radio("Entry Method", ["Search USDA","Manual / Saved"], horizontal=True)
 
-    # ================= USDA =================
     if entry_mode == "Search USDA":
         query = st.text_input("Search food")
         if st.button("Search USDA"):
@@ -193,20 +192,16 @@ with left:
                 load_foods.clear()
                 st.rerun()
 
-    # ================= MANUAL + SAVED =================
     else:
         saved_df = load_saved_foods()
 
-        if not saved_df.empty:
-            search_term = st.text_input("Search Saved Foods")
-            filtered = saved_df[
-                saved_df["food"].str.contains(search_term, case=False, na=False)
-            ] if search_term else saved_df
+        search_term = st.text_input("Search Saved Foods")
+        filtered = saved_df[
+            saved_df["food"].str.contains(search_term, case=False, na=False)
+        ] if search_term and not saved_df.empty else saved_df
 
-            options = ["New Food"] + filtered["food"].tolist()
-            selection = st.selectbox("Choose Food", options)
-        else:
-            selection = "New Food"
+        options = ["New Food"] + filtered["food"].tolist() if not saved_df.empty else ["New Food"]
+        selection = st.selectbox("Choose Food", options)
 
         if selection != "New Food":
             row = saved_df[saved_df["food"]==selection].iloc[0]
@@ -253,17 +248,8 @@ with left:
                     fiber*servings
                 ])
 
-                # Save to library if not duplicate
                 if name and name not in saved_df["food"].tolist():
-                    saved_ws.append_row([
-                        name,
-                        calories,
-                        protein,
-                        fat,
-                        sat,
-                        carbs,
-                        fiber
-                    ])
+                    saved_ws.append_row([name, calories, protein, fat, sat, carbs, fiber])
                     load_saved_foods.clear()
 
                 load_foods.clear()
@@ -286,3 +272,84 @@ with right:
 
         chart_df = pd.DataFrame({"Percent":values}, index=labels)
         st.bar_chart(chart_df)
+
+# ==========================================================
+# WATER + 7 DAY WATER
+# ==========================================================
+
+water_left, water_right = st.columns([1,1])
+
+with water_left:
+    st.header("Water Intake")
+    water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
+
+    if st.button("Add Water"):
+        existing = water_df[water_df["date"]==pd.to_datetime(selected_date)]
+        if existing.empty:
+            water_ws.append_row([selected_date_str, water_amount])
+        else:
+            row_index = existing.index[0] + 2
+            water_ws.update_cell(row_index,2,float(existing["water"].iloc[0]) + water_amount)
+        load_water.clear()
+        st.rerun()
+
+with water_right:
+    st.header("7 Day Water")
+    if not water_df.empty:
+        last7 = water_df[water_df["date"] >= pd.to_datetime(selected_date)-timedelta(days=6)]
+        st.line_chart(last7.set_index("date")["water"])
+
+# ==========================================================
+# NOTES + WEIGHT
+# ==========================================================
+
+notes_left, weight_right = st.columns([1,1])
+
+with notes_left:
+    st.header("Daily Notes")
+    notes_df = load_notes()
+
+    existing_note = ""
+    if not notes_df.empty:
+        row = notes_df[notes_df["date"]==selected_date_str]
+        if not row.empty:
+            existing_note = row["notes"].iloc[0]
+
+    note_text = st.text_area("Notes", value=existing_note, height=150)
+
+    if st.button("Save Note"):
+        if notes_df.empty or selected_date_str not in notes_df["date"].values:
+            notes_ws.append_row([selected_date_str, note_text])
+        else:
+            row_index = notes_df.index[notes_df["date"]==selected_date_str][0] + 2
+            notes_ws.update_cell(row_index,2,note_text)
+        load_notes.clear()
+        st.success("Note saved.")
+
+with weight_right:
+    st.header("7 Day Weight")
+    weight_input = st.number_input("Enter weight", 0.0, step=0.1)
+
+    if st.button("Save Weight"):
+        existing = weights_df[weights_df["date"]==pd.to_datetime(selected_date)]
+        if existing.empty:
+            weight_ws.append_row([selected_date_str, weight_input])
+        else:
+            row_index = existing.index[0] + 2
+            weight_ws.update_cell(row_index,2,weight_input)
+        load_weights.clear()
+        st.rerun()
+
+    weights_df = load_weights()
+    if not weights_df.empty:
+        weights_df = weights_df.sort_values("date")
+        weights_df["rolling_avg"] = weights_df["weight"].rolling(7).mean()
+        st.line_chart(weights_df.set_index("date")["rolling_avg"])
+
+# ==========================================================
+# END DAY
+# ==========================================================
+
+st.divider()
+if st.button("End Day"):
+    st.success("Day complete.")
