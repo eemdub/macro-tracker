@@ -101,70 +101,20 @@ entry_mode = st.radio(
 
 if entry_mode == "Search USDA":
 
-    food_query = st.text_input("Enter food name")
+    col1, col2 = st.columns([5, 1])
 
-    if st.button("Search"):
+    with col1:
+        food_query = st.text_input("Enter food name")
+
+    with col2:
+        search_clicked = st.button("Search")
+
+    if search_clicked:
         results = search_food(food_query)
         if results:
             st.session_state.search_results = results
         else:
             st.error("No foods found.")
-
-    if "search_results" in st.session_state:
-
-        options = {
-            f"{food['description']} ({food.get('brandOwner','USDA')})": food
-            for food in st.session_state.search_results
-        }
-
-        selected_label = st.selectbox("Select correct food:", list(options.keys()))
-        selected_food = options[selected_label]
-        st.session_state.current_food = selected_food
-
-    if st.session_state.current_food:
-
-        food = st.session_state.current_food
-        macros = extract_macros(food)
-
-        serving_size = food.get("servingSize")
-        serving_unit = food.get("servingSizeUnit")
-        household = food.get("householdServingFullText")
-
-        st.subheader("Serving Information")
-
-        if serving_size:
-
-            if household:
-                st.write(f"1 USDA serving = {household} ({serving_size} {serving_unit})")
-            else:
-                st.write(f"1 USDA serving = {serving_size} {serving_unit}")
-
-            servings = st.number_input(
-                "How many servings did you eat?",
-                min_value=0.0,
-                step=0.5
-            )
-
-            if st.button("Add to Daily Log"):
-
-                entry = {
-                    "date": str(date.today()),
-                    "food": food["description"],
-                    "calories": macros["calories"] * servings,
-                    "protein": macros["protein"] * servings,
-                    "fat": macros["fat"] * servings,
-                    "carbs": macros["carbs"] * servings
-                }
-
-                st.session_state.daily_log.append(entry)
-                st.success("Food added.")
-                st.session_state.current_food = None
-
-        else:
-            st.warning(
-                "This item does not have a USDA serving size available. "
-                "Please use manual macro entry for this item."
-            )
 # =============================
 # MANUAL MODE
 # =============================
@@ -272,4 +222,5 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
 
