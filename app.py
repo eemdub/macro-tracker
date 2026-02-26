@@ -20,6 +20,7 @@ gc = gspread.authorize(creds)
 sheet = gc.open_by_key(st.secrets["gcp_service_account"]["sheet_id"])
 
 daily_ws = sheet.worksheet("Daily Foods")
+water_ws = sheet.worksheet("Water")
 
 DAILY_GOALS = {
     "calories": 2000,
@@ -29,29 +30,44 @@ DAILY_GOALS = {
     "sat_fat": 15
 }
 
+WATER_GOAL = 75
+
 today_str = str(date.today())
 
 # =============================
 # HELPERS
 # =============================
 
+@st.cache_data(ttl=60)
 def load_today_meals():
     try:
-        data = daily_ws.get_all_records()
-        df = pd.DataFrame(data)
-
+        df = pd.DataFrame(daily_ws.get_all_records())
         if df.empty:
             return []
-
         df["date"] = df["date"].astype(str)
-        today_df = df[df["date"] == today_str]
-
-        return today_df.to_dict("records")
+        return df[df["date"] == today_str].to_dict("records")
     except:
         return []
 
-def append_meal(rows):
-    daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
+def rewrite_daily_sheet(data):
+    daily_ws.clear()
+    daily_ws.append_row(
+        ["date","food","servings","calories","protein","fat","sat_fat","carbs"]
+    )
+    if data:
+        rows = []
+        for item in data:
+            rows.append([
+                item["date"],
+                item["food"],
+                item["servings"],
+                item["calories"],
+                item["protein"],
+                item["fat"],
+                item["sat_fat"],
+                item["carbs"]
+            ])
+        daily_ws.append_rows(rows, value_input_option="USER_ENTERED")
 
 def search_food(food_name):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -75,41 +91,32 @@ def extract_macros(food):
             macros["sat_fat"] = n["value"]
     return macros
 
-# ---------- SAVED FOODS ----------
+# =============================
+# WATER
+# =============================
 
-def load_saved_foods():
+@st.cache_data(ttl=60)
+def load_water():
     try:
-        ws = sheet.worksheet("Saved Foods")
-        return pd.DataFrame(ws.get_all_records())
+        df = pd.DataFrame(water_ws.get_all_records())
+        if df.empty:
+            return 0
+        df["date"] = df["date"].astype(str)
+        today = df[df["date"] == today_str]
+        if today.empty:
+            return 0
+        return float(today["water"].iloc[0])
     except:
-        return pd.DataFrame(columns=[
-            "food","servings","calories","protein","fat","sat_fat","carbs"
-        ])
+        return 0
 
-def save_food_to_library(entry):
-    ws = sheet.worksheet("Saved Foods")
-    ws.append_row([
-        entry["food"],
-        1,
-        entry["calories"] / entry["servings"],
-        entry["protein"] / entry["servings"],
-        entry["fat"] / entry["servings"],
-        entry["sat_fat"] / entry["servings"],
-        entry["carbs"] / entry["servings"]
-    ])
-
-# ---------- WEIGHTS ----------
-
-def load_weights():
-    try:
-        ws = sheet.worksheet("Weights")
-        return pd.DataFrame(ws.get_all_records())
-    except:
-        return pd.DataFrame(columns=["date","weight"])
-
-def save_weight(weight):
-    ws = sheet.worksheet("Weights")
-    ws.append_row([today_str, weight])
+def update_water(amount):
+    df = pd.DataFrame(water_ws.get_all_records())
+    if df.empty or today_str not in df["date"].astype(str).values:
+        water_ws.append_row([today_str, amount])
+    else:
+        row_index = df.index[df["date"].astype(str)==today_str][0] + 2
+        current = float(df.loc[df["date"].astype(str)==today_str,"water"].iloc[0])
+        water_ws.update_cell(row_index,2,current+amount)
 
 # =============================
 # SESSION STATE
@@ -121,16 +128,19 @@ if "daily_log" not in st.session_state:
 if "current_meal" not in st.session_state:
     st.session_state.current_meal = []
 
+if "water_total" not in st.session_state:
+    st.session_state.water_total = load_water()
+
 # =============================
 # UI
 # =============================
 
-st.title("Daily Macro Tracker")
+st.title("Daily Macro & Water Tracker")
 
 left_col, right_col = st.columns([1,1])
 
 # =============================
-# LEFT — INPUT
+# LEFT — FOOD INPUT
 # =============================
 
 with left_col:
@@ -143,9 +153,8 @@ with left_col:
         horizontal=True
     )
 
-    # ---------- USDA ----------
+    # USDA
     if entry_mode == "Search USDA":
-
         food_query = st.text_input("Search food")
 
         if st.button("Search"):
@@ -154,7 +163,6 @@ with left_col:
                 st.session_state.search_results = results
 
         if "search_results" in st.session_state:
-
             options = {
                 f"{f['description']} ({f.get('brandOwner','USDA')})": f
                 for f in st.session_state.search_results
@@ -164,127 +172,33 @@ with left_col:
             food = options[selected_label]
             macros = extract_macros(food)
 
-            serving_size = food.get("servingSize")
-            serving_unit = food.get("servingSizeUnit")
-
             servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
-
-            if serving_size and serving_unit and serving_unit.lower()=="g":
-                multiplier = (serving_size/100) * servings
-            else:
-                multiplier = servings
 
             if st.button("Add to Current Meal"):
                 entry = {
                     "date": today_str,
                     "food": food["description"],
                     "servings": servings,
-                    "calories": macros["calories"] * multiplier,
-                    "protein": macros["protein"] * multiplier,
-                    "fat": macros["fat"] * multiplier,
-                    "carbs": macros["carbs"] * multiplier,
-                    "sat_fat": macros["sat_fat"] * multiplier
+                    "calories": macros["calories"] * servings,
+                    "protein": macros["protein"] * servings,
+                    "fat": macros["fat"] * servings,
+                    "carbs": macros["carbs"] * servings,
+                    "sat_fat": macros["sat_fat"] * servings
                 }
                 st.session_state.current_meal.append(entry)
                 st.success("Added.")
 
-    # ---------- MANUAL ----------
-    if entry_mode == "Enter Macros Manually":
-
-        saved_df = load_saved_foods()
-
-        if not saved_df.empty:
-            options = ["Enter New Food"] + list(saved_df["food"])
-            selected = st.selectbox("Saved or New", options)
-        else:
-            selected = "Enter New Food"
-
-        if selected != "Enter New Food":
-
-            row = saved_df[saved_df["food"]==selected].iloc[0]
-            servings = st.number_input("Servings eaten", min_value=0.0, step=0.5)
-
-            manual_name = selected
-            manual_calories = row["calories"] * servings
-            manual_protein = row["protein"] * servings
-            manual_fat = row["fat"] * servings
-            manual_carbs = row["carbs"] * servings
-            manual_sat = row["sat_fat"] * servings
-
-        else:
-
-            manual_name = st.text_input("Food name")
-
-            st.markdown("### Macros Per 1 Serving")
-
-            r1c1, r1c2 = st.columns(2)
-            with r1c1:
-                per_protein = st.number_input("Protein (g)", min_value=0.0)
-            with r1c2:
-                per_carbs = st.number_input("Carbs (g)", min_value=0.0)
-
-            r2c1, r2c2 = st.columns(2)
-            with r2c1:
-                per_fat = st.number_input("Fat (g)", min_value=0.0)
-            with r2c2:
-                per_sat = st.number_input("Sat Fat (g)", min_value=0.0)
-
-            servings = st.number_input("Servings eaten", min_value=1.0, step=0.5)
-
-            manual_protein = per_protein * servings
-            manual_carbs = per_carbs * servings
-            manual_fat = per_fat * servings
-            manual_sat = per_sat * servings
-
-            manual_calories = (
-                per_protein*4 + per_carbs*4 + per_fat*9
-            ) * servings
-
-        if st.button("Add to Current Meal"):
-
-            entry = {
-                "date": today_str,
-                "food": manual_name,
-                "servings": servings,
-                "calories": manual_calories,
-                "protein": manual_protein,
-                "fat": manual_fat,
-                "carbs": manual_carbs,
-                "sat_fat": manual_sat
-            }
-
-            st.session_state.current_meal.append(entry)
-
-            if selected == "Enter New Food":
-                save_food_to_library(entry)
-
-            st.success("Added.")
-
-    # ---------- SAVE MEAL ----------
+    # SAVE MEAL
     if st.session_state.current_meal:
-
         st.subheader("Current Meal")
         st.dataframe(pd.DataFrame(st.session_state.current_meal))
 
         if st.button("Save Meal"):
-
-            rows = []
-            for item in st.session_state.current_meal:
-                rows.append([
-                    item["date"],
-                    item["food"],
-                    item["servings"],
-                    item["calories"],
-                    item["protein"],
-                    item["fat"],
-                    item["sat_fat"],
-                    item["carbs"]
-                ])
-
-            append_meal(rows)
             st.session_state.daily_log.extend(st.session_state.current_meal)
+            rewrite_daily_sheet(st.session_state.daily_log)
             st.session_state.current_meal = []
             st.success("Meal saved.")
+            st.rerun()
 
 # =============================
 # RIGHT — DASHBOARD
@@ -297,35 +211,47 @@ with right_col:
     df = pd.DataFrame(st.session_state.daily_log)
 
     if not df.empty:
-
         totals = df.sum(numeric_only=True)
 
-        def block(label,value,goal):
-            percent = value/goal
-            over = value>goal
+        chart_data = pd.DataFrame({
+            "Macro":[
+                f"Calories\n{round(totals['calories'],1)}",
+                f"Protein\n{round(totals['protein'],1)}g",
+                f"Fat\n{round(totals['fat'],1)}g",
+                f"Carbs\n{round(totals['carbs'],1)}g",
+                f"Sat Fat\n{round(totals['sat_fat'],1)}g"
+            ],
+            "Percent":[
+                totals["calories"]/DAILY_GOALS["calories"],
+                totals["protein"]/DAILY_GOALS["protein"],
+                totals["fat"]/DAILY_GOALS["fat"],
+                totals["carbs"]/DAILY_GOALS["carbs"],
+                totals["sat_fat"]/DAILY_GOALS["sat_fat"]
+            ]
+        })
 
-            if over:
-                st.markdown(f"<span style='color:red;font-weight:bold'>{label}</span>",unsafe_allow_html=True)
-                st.markdown(f"<span style='color:red;font-size:28px;font-weight:bold'>{round(value,1)}</span>",unsafe_allow_html=True)
-            else:
-                st.markdown(f"**{label}**")
-                st.markdown(f"<span style='font-size:28px;font-weight:bold'>{round(value,1)}</span>",unsafe_allow_html=True)
+        st.bar_chart(chart_data.set_index("Macro"))
 
-            st.progress(min(percent,1.0))
-            st.markdown("<br>",unsafe_allow_html=True)
+    # WATER TRACKER
+    st.divider()
+    st.subheader("Water Intake")
 
-        block("Calories",totals["calories"],DAILY_GOALS["calories"])
-        block("Protein",totals["protein"],DAILY_GOALS["protein"])
-        block("Fat",totals["fat"],DAILY_GOALS["fat"])
-        block("Carbs",totals["carbs"],DAILY_GOALS["carbs"])
-        block("Sat Fat",totals["sat_fat"],DAILY_GOALS["sat_fat"])
+    water_add = st.number_input("Add water (oz)", min_value=0.0, step=4.0)
 
-st.divider()
+    if st.button("Add Water"):
+        update_water(water_add)
+        st.session_state.water_total += water_add
+        st.success("Water added.")
+        st.rerun()
+
+    st.markdown(f"**{round(st.session_state.water_total,1)} oz / {WATER_GOAL} oz**")
+    st.progress(min(st.session_state.water_total/WATER_GOAL,1.0))
 
 # =============================
 # TODAY'S LOG
 # =============================
 
+st.divider()
 st.header("Today's Log")
 
 df = pd.DataFrame(st.session_state.daily_log)
@@ -345,36 +271,13 @@ if not df.empty:
         with col2:
             if st.button("Delete", key=f"del_{i}"):
                 st.session_state.daily_log.pop(i)
+                rewrite_daily_sheet(st.session_state.daily_log)
                 st.rerun()
 else:
     st.info("No entries yet.")
 
 if st.button("End Day"):
-    st.session_state.daily_log=[]
-    st.session_state.current_meal=[]
+    st.session_state.daily_log = []
+    rewrite_daily_sheet([])
     st.success("Day cleared.")
-
-# =============================
-# WEIGHT (BOTTOM)
-# =============================
-
-st.divider()
-st.header("Daily Weight")
-
-weights_df = load_weights()
-
-if not weights_df.empty and today_str in weights_df["date"].astype(str).values:
-    today_weight = weights_df[weights_df["date"]==today_str]["weight"].iloc[0]
-    st.success(f"Today's weight: {today_weight}")
-else:
-    weight_input = st.number_input("Enter today's weight", min_value=0.0, step=0.1)
-    if st.button("Save Weight"):
-        save_weight(weight_input)
-        st.success("Weight saved.")
-        st.rerun()
-
-if not weights_df.empty:
-    weights_df["date"] = pd.to_datetime(weights_df["date"])
-    weights_df = weights_df.sort_values("date")
-    st.subheader("Weight Trend")
-    st.line_chart(weights_df.set_index("date")["weight"])
+    st.rerun()
