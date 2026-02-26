@@ -344,6 +344,7 @@ with row_right:
         )
 
         st.altair_chart(chart, use_container_width=True)
+
 # ==========================================================
 # NOTES (FULL ROW)
 # ==========================================================
@@ -352,26 +353,33 @@ st.divider()
 st.header("Daily Notes")
 
 notes_df = load_notes()
-existing_note = ""
 
+existing_note = ""
 if not notes_df.empty:
     row = notes_df[notes_df["date"]==selected_date_str]
     if not row.empty:
         existing_note = row["notes"].iloc[0]
 
-note_text = st.text_area("Notes", value=existing_note, height=200)
+note_text = st.text_area("Notes", value=existing_note, height=180)
 
-colA, colB = st.columns([1,1])
+# ==========================================================
+# SAVE NOTE + END DAY ROW
+# ==========================================================
 
-with colA:
+button_left, button_right = st.columns([1,1])
+
+with button_left:
     if st.button("Save Note"):
-        notes_ws.append_row([selected_date_str, note_text])
+        if notes_df.empty or selected_date_str not in notes_df["date"].values:
+            notes_ws.append_row([selected_date_str, note_text])
+        else:
+            row_index = notes_df.index[
+                notes_df["date"]==selected_date_str
+            ][0] + 2
+            notes_ws.update_cell(row_index,2,note_text)
         load_notes.clear()
-        st.success("Saved")
+        st.success("Note saved.")
 
-with colB:
+with button_right:
     if st.button("End Day"):
-        st.success("Day Complete")
-
-
-
+        st.success("Day complete.")
