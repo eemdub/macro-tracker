@@ -314,10 +314,47 @@ with right_col:
 st.divider()
 
 st.header("Today's Log")
+
+df = pd.DataFrame(st.session_state.daily_log)
+
 if not df.empty:
-    st.dataframe(df)
+
+    for i, row in df.iterrows():
+
+        col1, col2 = st.columns([6, 1])
+
+        high_carb = row["carbs"] > 30
+
+        with col1:
+            food_display = f"**{row['food']}**"
+
+            macro_text = (
+                f"{round(row['calories'],1)} cal | "
+                f"P: {round(row['protein'],1)}g | "
+                f"F: {round(row['fat'],1)}g | "
+                f"Sat: {round(row['sat_fat'],1)}g | "
+                f"C: {round(row['carbs'],1)}g"
+            )
+
+            if high_carb:
+                st.markdown(
+                    f"<div style='background-color:#ffe6e6;padding:8px;border-radius:6px'>"
+                    f"{food_display} | {macro_text}</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(f"{food_display} | {macro_text}")
+
+        with col2:
+            if st.button("Delete", key=f"delete_{i}"):
+                st.session_state.daily_log.pop(i)
+                st.rerun()
+
+else:
+    st.info("No entries yet.")
 
 if st.button("End Day"):
     st.session_state.daily_log=[]
     st.session_state.current_meal=[]
     st.success("Day cleared.")
+
