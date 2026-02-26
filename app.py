@@ -320,23 +320,27 @@ with row_right:
     water_df = load_water()
     weights_df = load_weights()
 
-    if not water_df.empty or not weights_df.empty:
+    start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-        # Filter last 7 days
-        start_date = pd.to_datetime(selected_date) - timedelta(days=6)
+    water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
+    weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
 
-        water_last7 = water_df[water_df["date"] >= start_date]
-        weight_last7 = weights_df[weights_df["date"] >= start_date]
+    # Ensure date columns are same dtype
+    water_last7["date"] = pd.to_datetime(water_last7["date"])
+    weight_last7["date"] = pd.to_datetime(weight_last7["date"])
 
-        # Merge datasets
-        combined = pd.merge(
-            water_last7,
-            weight_last7,
-            on="date",
-            how="outer"
-        ).sort_values("date")
+    combined = pd.merge(
+        water_last7,
+        weight_last7,
+        on="date",
+        how="outer"
+    ).sort_values("date")
 
-        # Dual axis chart
+    # Drop rows where both are missing
+    combined = combined.dropna(how="all", subset=["water","weight"])
+
+    if not combined.empty:
+
         base = alt.Chart(combined).encode(
             x=alt.X("date:T", title="Date")
         )
@@ -354,6 +358,8 @@ with row_right:
         )
 
         st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("No data available for last 7 days.")
 
 # ==========================================================
 # NOTES (FULL ROW)
@@ -393,4 +399,5 @@ with button_left:
 with button_right:
     if st.button("End Day"):
         st.success("Day complete.")
+
 
