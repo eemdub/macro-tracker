@@ -106,8 +106,10 @@ if entry_mode == "Search USDA":
 
     with st.form("search_form"):
         col1, col2 = st.columns([6, 1])
+
         with col1:
             food_query = st.text_input("Enter food name")
+
         with col2:
             submitted = st.form_submit_button("Search")
 
@@ -140,6 +142,10 @@ if entry_mode == "Search USDA":
 
         st.subheader("Serving Information")
 
+        # =============================
+        # CASE 1: USDA SERVING EXISTS
+        # =============================
+
         if serving_size:
 
             if household:
@@ -153,27 +159,47 @@ if entry_mode == "Search USDA":
                 step=0.5
             )
 
-            if st.button("Add to Daily Log"):
+            multiplier = servings
 
-                entry = {
-                    "date": str(date.today()),
-                    "food": food["description"],
-                    "calories": macros["calories"] * servings,
-                    "protein": macros["protein"] * servings,
-                    "fat": macros["fat"] * servings,
-                    "carbs": macros["carbs"] * servings,
-                    "sat_fat": macros["sat_fat"] * servings
-                }
-
-                st.session_state.daily_log.append(entry)
-                st.success("Food added.")
-                st.session_state.current_food = None
+        # =============================
+        # CASE 2: NO SERVING AVAILABLE
+        # =============================
 
         else:
-            st.warning(
-                "This item does not have a USDA serving size available. "
-                "Please use manual macro entry."
+            st.warning("No USDA serving size available for this item.")
+
+            st.write(
+                "Nutrition values are based on 100 grams. "
+                "Estimate how many 100g servings you ate."
             )
+
+            servings = st.number_input(
+                "Estimated number of 100g servings:",
+                min_value=0.0,
+                step=0.5
+            )
+
+            multiplier = servings
+
+        # =============================
+        # ADD ENTRY
+        # =============================
+
+        if st.button("Add to Daily Log"):
+
+            entry = {
+                "date": str(date.today()),
+                "food": food["description"],
+                "calories": macros["calories"] * multiplier,
+                "protein": macros["protein"] * multiplier,
+                "fat": macros["fat"] * multiplier,
+                "carbs": macros["carbs"] * multiplier,
+                "sat_fat": macros.get("sat_fat", 0) * multiplier
+            }
+
+            st.session_state.daily_log.append(entry)
+            st.success("Food added.")
+            st.session_state.current_food = None
 
 # =============================
 # MANUAL MODE
@@ -316,3 +342,4 @@ if st.button("End Day and Save"):
         st.success("Day saved to Google Sheets.")
     else:
         st.warning("No entries to save.")
+
