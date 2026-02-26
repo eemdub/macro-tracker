@@ -264,15 +264,46 @@ with right:
         st.bar_chart(pd.DataFrame({"%":values}, index=labels))
 
 # ==========================================================
-# WATER + WEIGHT ROW
+# WATER + WEIGHT (COMBINED CHART ROW)
 # ==========================================================
+
+import altair as alt
 
 row_left, row_right = st.columns([1,2])
 
-# ==========================================================
-# 7 DAY WATER & WEIGHT COMBINED CHART
-# ==========================================================
+# ---------------- LEFT SIDE (STACKED INPUTS) ----------------
+with row_left:
+    st.header("Water & Weight")
 
+    # -------- WATER INPUT --------
+    water_amount = st.number_input("Add water (oz)", 0.0, step=4.0)
+
+    if st.button("Add Water"):
+        existing = water_df[water_df["date"]==pd.to_datetime(selected_date)]
+        if existing.empty:
+            water_ws.append_row([selected_date_str, water_amount])
+        else:
+            row_index = existing.index[0] + 2
+            water_ws.update_cell(row_index,2,float(existing["water"].iloc[0]) + water_amount)
+        load_water.clear()
+        st.rerun()
+
+    st.divider()
+
+    # -------- WEIGHT INPUT --------
+    weight_input = st.number_input("Enter weight", 0.0, step=0.1)
+
+    if st.button("Save Weight"):
+        existing = weights_df[weights_df["date"]==pd.to_datetime(selected_date)]
+        if existing.empty:
+            weight_ws.append_row([selected_date_str, weight_input])
+        else:
+            row_index = existing.index[0] + 2
+            weight_ws.update_cell(row_index,2,weight_input)
+        load_weights.clear()
+        st.rerun()
+
+# ---------------- RIGHT SIDE (COMBINED CHART) ----------------
 with row_right:
     st.header("7 Day Water & Weight")
 
@@ -281,15 +312,13 @@ with row_right:
 
     if not water_df.empty or not weights_df.empty:
 
+        # Filter last 7 days
         start_date = pd.to_datetime(selected_date) - timedelta(days=6)
 
-        water_last7 = water_df[water_df["date"] >= start_date][["date","water"]]
-        weight_last7 = weights_df[weights_df["date"] >= start_date][["date","weight"]]
+        water_last7 = water_df[water_df["date"] >= start_date]
+        weight_last7 = weights_df[weights_df["date"] >= start_date]
 
-        # Ensure both date columns are proper datetime
-        water_last7["date"] = pd.to_datetime(water_last7["date"])
-        weight_last7["date"] = pd.to_datetime(weight_last7["date"])
-
+        # Merge datasets
         combined = pd.merge(
             water_last7,
             weight_last7,
@@ -297,57 +326,24 @@ with row_right:
             how="outer"
         ).sort_values("date")
 
-        # Drop rows where both values are missing
-        combined = combined.dropna(how="all", subset=["water","weight"])
+        # Dual axis chart
+        base = alt.Chart(combined).encode(
+            x=alt.X("date:T", title="Date")
+        )
 
-        if not combined.empty:
+        water_line = base.mark_line(color="blue").encode(
+            y=alt.Y("water:Q", title="Water (oz)")
+        )
 
-            # Remove time component (fixes the AM/PM issue)
-            combined["date"] = pd.to_datetime(combined["date"]).dt.date
+        weight_line = base.mark_line(color="red").encode(
+            y=alt.Y("weight:Q", title="Weight", axis=alt.Axis(titleColor="red"))
+        )
 
-            base = alt.Chart(combined).encode(
-                x=alt.X(
-                    "date:T",
-                    title="Date",
-                    axis=alt.Axis(format="%b %d")
-                )
-            )
+        chart = alt.layer(water_line, weight_line).resolve_scale(
+            y='independent'
+        )
 
-            # Thicker water line
-            water_line = base.mark_line(
-                color="blue",
-                strokeWidth=4
-            ).encode(
-                y=alt.Y(
-                    "water:Q",
-                    title="Water (oz)"
-                )
-            )
-
-            # Thicker weight line (starts at 300)
-            weight_line = base.mark_line(
-                color="red",
-                strokeWidth=4
-            ).encode(
-                y=alt.Y(
-                    "weight:Q",
-                    title="Weight",
-                    scale=alt.Scale(domain=[300, None]),
-                    axis=alt.Axis(titleColor="red")
-                )
-            )
-
-            chart = alt.layer(
-                water_line,
-                weight_line
-            ).resolve_scale(
-                y="independent"
-            )
-
-            st.altair_chart(chart, use_container_width=True)
-
-        else:
-            st.info("No data available for last 7 days.")
+        st.altair_chart(chart, use_container_width=True)
 # ==========================================================
 # NOTES (FULL ROW)
 # ==========================================================
@@ -376,5 +372,6 @@ with colA:
 with colB:
     if st.button("End Day"):
         st.success("Day Complete")
+
 
 
